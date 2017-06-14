@@ -1,0 +1,249 @@
+package com.caloricpath.shared;
+
+import com.rpc.shared.RpcClass;
+import com.rpc.shared.RpcPropertyArrayDouble;
+import com.rpc.shared.RpcPropertyArrayFloat;
+import com.rpc.shared.RpcPropertyArrayInteger;
+import com.rpc.shared.RpcPropertyArrayString;
+import com.rpc.shared.RpcPropertyClass;
+import com.rpc.shared.RpcPropertyInteger;
+import com.rpc.shared.RpcPropertyString;
+import com.rpc.shared.Trace;
+
+public class SatFileClass 
+	extends RpcClass 
+{
+	public RpcPropertyString FileName = new RpcPropertyString("FileName","", READWRITE+SAVERESTORE);
+	public RpcPropertyInteger FileIndex = new RpcPropertyInteger("FileIndex", -1, READWRITE+SAVERESTORE);
+	public RpcPropertyArrayString FilesPresent = new RpcPropertyArrayString(
+		"FilesPresent",
+		new String[] {
+			"Papua_New_Guinea_Tract_139m",
+			"Papua_New_Guinea_Tract_69m",
+			"Papua_New_Guinea_Tract_13m"
+			},
+		READONLY
+		);
+	
+//	public RpcPropertyInteger FileSamples = new RpcPropertyInteger("Samples",0, READONLY);
+//	public RpcPropertyInteger FileLines = new RpcPropertyInteger("Lines",0, READONLY);
+//	public RpcPropertyInteger FilePoints = new RpcPropertyInteger("Points",0, READONLY);
+//	public RpcPropertyArrayDouble FileCenter = new RpcPropertyArrayDouble("FileCenter",new Double[] {0.0, 0.0}, READONLY );
+//	public RpcPropertyArrayDouble FileDegrees = new RpcPropertyArrayDouble("FileDegrees",new Double[] {0.0, 0.0}, READONLY );
+//	public RpcPropertyArrayDouble FileMiles = new RpcPropertyArrayDouble("FileMiles",new Double[] {0.0, 0.0}, READONLY );
+//	public RpcPropertyArrayDouble FileNSEWDegrees = new RpcPropertyArrayDouble("FileNSEWDegrees",new Double[] {0.0, 0.0, 0.0, 0.0}, READONLY);
+	
+	public RpcPropertyClass<SatFileStatus> FileStatus = new RpcPropertyClass<SatFileStatus>( "FileStatus", new SatFileStatus(), READONLY );
+	
+	public RpcPropertyArrayDouble FocusCenter = new RpcPropertyArrayDouble("FocusCenter",new Double[] {0.0, 0.0}, READWRITE+SAVERESTORE );
+	public RpcPropertyArrayDouble FocusDegrees = new RpcPropertyArrayDouble("FocusDegrees",new Double[] {0.0, 0.0}, READWRITE+SAVERESTORE ); 
+	public RpcPropertyArrayDouble FocusMiles = new RpcPropertyArrayDouble("FocusMiles",new Double[] {0.0, 0.0}, READWRITE );
+	
+	public RpcPropertyArrayInteger FocusTopLeftColRow = new RpcPropertyArrayInteger("FocusTopLeftColRow",new Integer[] {0, 0}, READONLY );
+	public RpcPropertyArrayInteger FocusWidthHeightColRow = new RpcPropertyArrayInteger("FocusWidthHeightColRow",new Integer[] {0, 0}, READONLY );
+	
+	public RpcPropertyArrayFloat Data = new RpcPropertyArrayFloat("Data",null, READONLY);
+	public RpcPropertyInteger DataMaxCount = new RpcPropertyInteger("DataMaxCount",22000, READWRITE+SAVERESTORE); //22500, READWRITE+SAVERESTORE);
+	public RpcPropertyArrayInteger DataDimensions = new RpcPropertyArrayInteger("DataDimensions",new Integer[] {0,0}, READONLY);
+
+	/* CLAMPS */
+	
+	private double clamp_double(double min, double max, double val)
+	{
+		return Math.min(max, Math.max(min, val));
+	}
+	
+	private int clamp_int(double min, double max, double val)
+	{
+		return (int)Math.min(max, Math.max(min, val));
+	}
+	
+	/* FILE */
+	
+	public double File_RowToLat( int row ) 
+	{
+		double top = FileStatus.getValue().getNSEWDegrees()[0] ;
+		double height = FileStatus.getValue().getDegrees()[0];
+		double bottom = FileStatus.getValue().getNSEWDegrees()[1];
+		double rows = FileStatus.getValue().getLines();
+		
+		double answer = top - ((double)row * height)/rows ;
+		return clamp_double( bottom, top, answer );
+	}
+	
+	public int File_LatToRow( double lat )
+	{
+		double top = FileStatus.getValue().getNSEWDegrees()[0] ;
+		double height = FileStatus.getValue().getDegrees()[0];
+		double bottom = FileStatus.getValue().getNSEWDegrees()[1];
+		double rows = FileStatus.getValue().getLines();
+		lat = clamp_double(bottom, top, lat);
+		
+		double answer = ((height - (lat - bottom))*rows)/height ;
+		
+		return clamp_int( 0, rows-1, answer );
+	}
+	
+	public double File_ColToLon( int col )
+	{
+		double left = FileStatus.getValue().getNSEWDegrees()[3];
+		double width = FileStatus.getValue().getDegrees()[1];
+		double right = FileStatus.getValue().getNSEWDegrees()[2];
+		double cols = FileStatus.getValue().getSamples();
+		
+		double answer = left + ((double)col * width)/cols ;
+		return clamp_double( left, right, answer );
+	}
+	
+	public int File_LonToCol( double lon )
+	{
+		double left = FileStatus.getValue().getNSEWDegrees()[3];
+		double width = FileStatus.getValue().getDegrees()[1];
+		double right = FileStatus.getValue().getNSEWDegrees()[2];
+		double cols = FileStatus.getValue().getSamples();
+		lon = clamp_double(left, right, lon);
+		
+		double answer = ((lon-left)*cols)/width;
+		return clamp_int( 0, cols-1, answer );
+	}
+	
+	/* FOCUS & DataDimensions */
+	
+//	public double Focus_RowToLat( int row )
+//	{
+//		double top = FocusCenter.getValue()[0] + 0.5*FocusDegrees.getValue()[0];
+//		double height = FocusDegrees.getValue()[0];
+//		double bottom = FocusCenter.getValue()[0] - 0.5*FocusDegrees.getValue()[0];
+//		double rows = DataDimensions.getValue()[1];
+//		
+//		double answer = top - ((double)row * height)/rows ;
+//		return clamp_double( bottom, top, answer );
+//	}
+	
+	public double Focus_LatToRow( double lat )
+	{
+		double top = FocusCenter.getValue()[0] + 0.5*FocusDegrees.getValue()[0];
+		double height = FocusDegrees.getValue()[0];
+		double bottom = FocusCenter.getValue()[0] - 0.5*FocusDegrees.getValue()[0];
+		double rows = DataDimensions.getValue()[1];
+		lat = clamp_double(bottom, top, lat);
+		
+		double answer = ((height - (lat - bottom))*rows)/height ;
+		double renderY = (rows / 2.0) - answer;
+		
+		return renderY;
+	}
+	
+//	public double Focus_ColToLon( int col )
+//	{
+//		double left = FocusCenter.getValue()[1] - 0.5*FocusDegrees.getValue()[1];
+//		double width = FocusDegrees.getValue()[1];
+//		double right = FocusCenter.getValue()[1] + 0.5*FocusDegrees.getValue()[1];
+//		double cols = DataDimensions.getValue()[0];
+//		
+//		double answer = left + ((double)col * width)/cols ;
+//		return clamp_double( left, right, answer );
+//	}
+	
+	public double Focus_LonToCol( double lon )
+	{
+		double left = FocusCenter.getValue()[1] - 0.5*FocusDegrees.getValue()[1];
+		double width = FocusDegrees.getValue()[1];
+		double right = FocusCenter.getValue()[1] + 0.5*FocusDegrees.getValue()[1];
+		double cols = DataDimensions.getValue()[0];
+		lon = clamp_double(left, right, lon);
+		
+		double answer = ((lon-left)*cols)/width;
+		double renderX = answer - ((double)cols / 2.0);
+		return renderX;
+	}
+	
+	/* don't do these because only would be replacing those conversion functions
+	 * in CaloricPath and MapLayers using m_Map.ViewArea and m_Map.ClientSize
+	 * to do translation between interactive layer and map layer
+	 */
+	
+//	/* VIEW AREA & Map.ClientSize */
+//	
+//	public double ViewArea_RowToLat( int row )
+//	{
+//		ImageServiceImpl
+//		double top = FocusCenter.getValue()[0] + 0.5*FocusDegrees.getValue()[0];
+//		double height = FocusDegrees.getValue()[0];
+//		double bottom = FocusCenter.getValue()[0] - 0.5*FocusDegrees.getValue()[0];
+//		double rows = DataDimensions.getValue()[1];
+//		
+//		double answer = top - ((double)row * height)/rows ;
+//		return clamp_double( bottom, top, answer );
+//	}
+//	
+//	public int ViewArea_LatToRow( double lat )
+//	public double ViewArea_ColToLon( int col )
+//	public int ViewArea_LonToCol( double lon )
+	
+	
+
+	
+	
+	public SatFileClass( String name )
+	{
+		super(name);
+		
+		try
+		{
+			FileName.setValue(FilesPresent.getValue()[FileIndex.getValue()]);
+		}
+		catch(Exception e)
+		{
+			Trace.println("SatFileClass::SatFileClass() set filename failed, e="+e.getMessage());
+		}
+	}
+	
+	@Override
+	public void AttachMembers()
+	{
+		AttachMember( FileName );
+		AttachMember( FileIndex );
+		AttachMember( FilesPresent );
+//		AttachMember( FileSamples );
+//		AttachMember( FileLines );
+//		AttachMember( FilePoints );
+//		AttachMember( FileCenter );
+//		AttachMember( FileDegrees );
+//		AttachMember( FileMiles );
+//		AttachMember( FileNSEWDegrees );
+		AttachMember( FileStatus );
+		AttachMember( FocusCenter );
+		AttachMember( FocusDegrees );
+		AttachMember( FocusMiles );
+		AttachMember( FocusTopLeftColRow );
+		AttachMember( FocusWidthHeightColRow );
+		AttachMember( Data );
+		AttachMember( DataMaxCount );
+		AttachMember( DataDimensions );
+	}
+
+	@Override
+	public void DetachMembers()
+	{
+		DetachMember( FileName );
+		DetachMember( FileIndex );
+		DetachMember( FilesPresent );
+//		DetachMember( FileSamples );
+//		DetachMember( FileLines );
+//		DetachMember( FilePoints );
+//		DetachMember( FileCenter );
+//		DetachMember( FileDegrees );
+//		DetachMember( FileMiles );
+//		DetachMember( FileNSEWDegrees );
+		DetachMember( FileStatus );
+		DetachMember( FocusCenter );
+		DetachMember( FocusDegrees );
+		DetachMember( FocusMiles );
+		DetachMember( FocusTopLeftColRow );
+		DetachMember( FocusWidthHeightColRow );
+		DetachMember( Data );
+		DetachMember( DataMaxCount );
+		DetachMember( DataDimensions );
+	}
+}

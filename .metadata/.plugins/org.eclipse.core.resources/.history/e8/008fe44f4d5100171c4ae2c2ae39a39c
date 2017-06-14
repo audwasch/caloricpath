@@ -1,0 +1,25 @@
+package com.caloricpath.server;
+
+import com.caloricpath.shared.PathStatus;
+import com.rpc.shared.Trace;
+
+public class PathStatusServer
+	extends PathStatus
+{
+	private boolean DEBUGGING=false;
+	
+	public PathStatusServer()
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatusServer()");
+	}
+	
+	public PathStatusServer(Integer id, String status)
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatusServer::PathStatusServer(), id="+id);
+		
+		super.setId(id);
+		super.setStatus(status);
+	}
+}

@@ -1,0 +1,101 @@
+package com.caloricpath.shared;
+
+import java.util.ArrayList;
+
+import com.rpc.shared.RpcClass;
+import com.rpc.shared.RpcPropertyArrayClass;
+import com.rpc.shared.Trace;
+
+public class ConstraintCollectionClass
+	extends RpcClass
+{
+	public RpcPropertyArrayClass<Constraint> List = 
+		new RpcPropertyArrayClass<Constraint>("List",new Constraint[0],READWRITE+SAVERESTORE)
+		{
+			@Override
+			public Constraint[] CreateArray(int dimension) 
+			{	
+				if(DEBUGGING)
+					Trace.println("ConstraintCollectionClass::CreateArray(List), dim="+dimension);
+				Constraint[] retn = new Constraint[dimension];
+				for( int n=0; n<retn.length; n++ )
+					retn[n] = new Constraint();
+				
+				return retn;
+			}
+		};
+	
+	public ConstraintCollectionClass(String name)
+	{
+		super(name);
+	}
+
+	@Override
+	public void AttachMembers()
+	{
+		AttachMember( List );
+	}
+
+	@Override
+	public void DetachMembers()
+	{
+		DetachMember( List );
+	}
+	
+	public Constraint LookupById( int id )
+	{
+		for(int n=0; n<List.getValue().length; n++)
+			if( List.getValue()[n].getId() == id )
+				return List.getValue()[n];
+		return null;
+	}
+	
+	public void RemoveById( Integer id ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintCollectionClass::RemoveById(), id="+id);
+		
+		ArrayList<Constraint> temp = new ArrayList<Constraint>();
+		
+		for( int n=0; n<List.getValue().length; n++)
+			if( List.getValue()[n].getId() != id )
+				temp.add( List.getValue()[n] );
+		
+		List.setValue( temp.toArray( new Constraint[temp.size()]));
+	}
+	
+	public void AddSingle( Constraint newValue ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintCollectionClass::AddSingle(), id="+newValue.getId());
+		
+		if( LookupById(newValue.getId()) != null )
+			throw new Exception( "[Id_Already_Exists]");
+		
+		Constraint[] temp = new Constraint[ List.getValue().length + 1] ;
+		for( int n=0; n<List.getValue().length; n++ )
+			temp[n] = List.getValue()[n];
+		
+		temp[ List.getValue().length ] = newValue;
+		List.setValue( temp );
+	}
+	
+	public int getUniqueId()
+	{
+		int retn=0;
+		
+		for( int n=1; retn==0; n++ )
+			if( LookupById(n)==null )
+				retn=n;
+		
+		return retn;
+	}
+
+	public void AnnounceChanges()
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintCollectionClass::AnnounceChanges()");
+	
+		List.AnnounceChanges();
+	}
+}

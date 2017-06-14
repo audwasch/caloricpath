@@ -1,0 +1,983 @@
+/*
+ * @author: Audrey Waschura
+ */
+package com.caloricpath.client;
+
+import java.util.ArrayList;
+
+import com.caloricpath.shared.AppGlobal;
+import com.caloricpath.shared.RenderView;
+import com.caloricpath.shared.utility.Util;
+import com.google.gwt.dev.shell.CheckForUpdates.UpdateResult;
+import com.google.gwt.user.client.Timer;
+import com.rpc.shared.Trace;
+
+import thothbot.parallax.core.client.AnimatedScene;
+import thothbot.parallax.core.client.textures.Texture;
+import thothbot.parallax.core.client.textures.Texture.ImageLoadHandler;
+import thothbot.parallax.core.shared.cameras.PerspectiveCamera;
+import thothbot.parallax.core.shared.core.Geometry;
+import thothbot.parallax.core.shared.geometries.BoxGeometry;
+import thothbot.parallax.core.shared.geometries.PlaneGeometry;
+import thothbot.parallax.core.shared.geometries.TetrahedronGeometry;
+import thothbot.parallax.core.shared.lights.DirectionalLight;
+import thothbot.parallax.core.shared.materials.LineBasicMaterial;
+import thothbot.parallax.core.shared.materials.MeshBasicMaterial;
+import thothbot.parallax.core.shared.math.Color;
+import thothbot.parallax.core.shared.math.Vector3;
+import thothbot.parallax.core.shared.objects.Line;
+import thothbot.parallax.core.shared.objects.Mesh;
+
+class DemoScene03 
+	extends AnimatedScene 
+{
+	private final static boolean DEBUGGING=false;
+	
+	private final static boolean WITH_TEXTURE_MAPPING=true;
+	private final static boolean WITH_SINGLE_LINE=false;
+	private final static float DATA_INVALID = -32768.0f;
+
+	private final static Vector3 UP_VECTOR = new Vector3(0,1,0) ;
+	//private final static double ALTITUDE_SCALE = 246.5;	//note this is 4X elevation factor from original 986;
+	private final static double ALTITUDE_SCALE = 3.0;
+	private final static double MOVE = 10.0;
+	
+	private PerspectiveCamera m_Camera;
+	private DirectionalLight m_Light;
+	private Line m_Grid;
+	private ArrayList<Mesh> m_Meshes = new ArrayList<Mesh>();
+	private ArrayList< ArrayList<Mesh>  > m_Paths = new ArrayList< ArrayList<Mesh> >();
+	private ArrayList<Line> m_SingleLines = new ArrayList<Line>();
+	private Vector3 m_Eye;
+	private Vector3 m_LookAt;
+	private double m_Theta;
+	private double m_Phi;
+	private int m_NavMode;		/* 0: camera, 1: world */
+	private boolean m_RenderArmed ;
+	private boolean m_RenderInhibited ;
+	private int m_TextureLoadSequence ;
+
+	public DemoScene03()
+	{
+		if(DEBUGGING)
+			Trace.println("DemoScene03::DemoScene03()");
+	}
+	
+	@Override
+	protected void onStart()
+	{
+		if(DEBUGGING)
+			Trace.println("DemoScene03::onStart()");
+		
+		m_Camera = new PerspectiveCamera( 70,
+				getRenderer().getAbsoluteAspectRation(), 
+	            1, 
+	            10000 
+				);
+			
+		m_Light = new DirectionalLight( 0xffffff );
+		m_Light.getPosition().set( 0, 0, 1 );
+		
+		m_Eye = new Vector3(0, 110, 120);
+		m_LookAt = new Vector3(0,0,0);
+
+		m_Theta = -90.0;
+		m_Phi = -Math.toDegrees(Math.atan(Math.toRadians(m_Eye.getY() / m_Eye.getZ())));
+		
+		m_NavMode = 0;	/* 0: camera */
+
+		m_Camera.setPosition(m_Eye);
+		m_Camera.lookAt(m_LookAt);
+		
+		createGrid();
+		m_RenderArmed=false;
+		m_RenderInhibited=false;
+
+		getScene().add( m_Light );
+		getScene().add( m_Grid );	
+		getRenderer().setClearColor(0xffffff);
+	}
+	
+	@Override
+	protected void onUpdate(double duration)
+	{
+		if(m_RenderArmed && !m_RenderInhibited)
+		{
+			if(DEBUGGING)
+				Trace.println("DemoScene03::onUpdate(), armTheRenderer duration="+Double.toString(duration) );
+			
+			getRenderer().render(getScene(), m_Camera);
+			m_RenderArmed=false;
+		}
+	}
+	
+	private void armTheRenderer()
+	{ 
+		if(DEBUGGING)
+			Trace.println("DemoScene03::armTheRenderer()");
+
+		m_RenderArmed=true;
+	}
+	
+	public void resetPosition()
+	{
+		if(DEBUGGING)
+			Trace.println("DemoScene03::resetPosition()");
+	
+		m_Eye = new Vector3(0, 110, 120);
+		m_LookAt = new Vector3(0,0,0);
+
+		m_Theta = -90.0;
+		m_Phi = -Math.toDegrees(Math.atan(Math.toRadians(m_Eye.getY() / m_Eye.getZ())));
+		
+
+		m_Camera.setPosition(m_Eye);
+		m_Camera.lookAt(m_LookAt);
+		
+
+		sendUpdate();
+		armTheRenderer();
+	}
+	
+	public void createGrid()
+	{
+		int i = 0;
+		int size = 500;
+		int step = 50;
+
+		if(DEBUGGING)
+			Trace.println("DemoScene03::createGrid()");
+		
+		Geometry geometry = new Geometry();
+
+		for ( i = - size; i <= size; i += step )
+		{
+			geometry.getVertices().add( new Vector3( - size, 0, i ) );
+			geometry.getVertices().add( new Vector3(   size, 0, i ) );
+
+			geometry.getVertices().add( new Vector3( i, 0, - size ) );
+			geometry.getVertices().add( new Vector3( i, 0,   size ) );
+		}
+
+		LineBasicMaterial material = new LineBasicMaterial();
+		material.setColor(new Color(0x0000ff));
+		material.setOpacity(0.2);
+		material.setTransparent(true);
+      
+		m_Grid = new Line( geometry, material, Line.MODE.PIECES );
+	}
+
+	public void setRenderView(RenderView newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("DemoScene03::setRenderView()");
+		
+		if( !getIsDragging() && !newValue.equals(getRenderView()))
+		{
+			m_Eye = toVec(newValue.getEye());
+			m_Camera.setPosition(m_Eye);
+			
+			m_LookAt = toVec(newValue.getLookAt());
+			m_Camera.lookAt(m_LookAt);
+			
+			m_Theta = newValue.getTheta();
+			m_Phi = newValue.getPhi();
+			
+			m_NavMode = newValue.getNavMode();
+			
+			if(CaloricPath.getPathResultList().List.getValue() != null && CaloricPath.getPathResultList().List.getValue().length > 0)
+				RenderPaths(
+					CaloricPath.getPathResultList().List.getValue(),
+					CaloricPath.getSat().FocusCenter.getValue(),
+					CaloricPath.getSat().FocusDegrees.getValue(),
+					CaloricPath.getSat().DataDimensions.getValue()
+					);
+			
+			armTheRenderer();
+		}
+	}
+	
+	ImageLoadHandler Texture_ImageLoad = new ImageLoadHandler()
+	{
+		@Override
+		public void onImageLoad(Texture texture) 
+		{
+			if(DEBUGGING)
+				Trace.println("DemoScene03::Texture_ImageLoad()");
+			
+			if( (++m_TextureLoadSequence)==2 ) /* top and bottom */
+			{
+				m_RenderInhibited=false;
+				m_RenderArmed=true;
+			}
+		}
+	};
+	
+	public void RenderMe( int columns, int rows, Float[] array )
+	{
+	   	if(DEBUGGING)
+	   	{   
+	   		Trace.println("DemoScene03::RenderMe col="+columns+", rows="+rows);
+	   		Trace.println("| float array n="+array.length);
+	   	}
+
+		getScene().remove(m_Meshes);
+	   	
+		for(Mesh m:m_Meshes)
+		{
+			if( m.getGeometry()!=null )
+			{
+				m.getGeometry().dispose();
+
+				m.deleteBuffers(getRenderer());
+				
+				if( m.getMaterial()!=null )
+				{
+					if( m.getMaterial() instanceof MeshBasicMaterial )
+					{
+						MeshBasicMaterial basic = (MeshBasicMaterial)m.getMaterial();
+						
+						if( basic.getMap()!=null && basic.getMap() instanceof Texture )
+							basic.getMap().deallocate(getRenderer());
+					}
+					
+//	causes error:				m.getMaterial().deallocate(getRenderer());
+				}
+			}
+		}
+		
+		m_Meshes.clear();
+		
+		int width = columns - 1;
+		int height = rows - 1;
+		PlaneGeometry planeGeom = new PlaneGeometry(width, height/2.0, width, height/2);
+		
+		int rowsUsed = (height/2) + 1;
+		int rowsLeft = rows - rowsUsed; // with one row of overlap
+		int heightLeft = rowsLeft;
+		PlaneGeometry planeGeom2 = new PlaneGeometry(width, heightLeft, width, heightLeft);
+		
+		double widthFactor = width / 2.0;
+		double heightFactor = height / 2.0;
+		
+		if(DEBUGGING)
+			Trace.println("cols" + columns + ", rows=" + rows +
+				", width=" + width + ", height=" + height +
+				", widthCover=" + width + ", heightCover=" + height +
+				", geo1(" + width + ", " + height/2.0 + ", " + width + ", " + height/2 + ")" +
+				", geo2(" + width + ", " + heightLeft + ", " + width + ", " + heightLeft + ")" +
+				", widthFactor=" + widthFactor + ", heightFactor=" + heightFactor +
+				", plane1Verts=" + planeGeom.getVertices().size() +
+				", plane2Verts=" + planeGeom2.getVertices().size() +
+				", allverts=" + (planeGeom.getVertices().size() + planeGeom2.getVertices().size()) +
+				", dataSize=" + array.length);
+		
+		
+		
+		int planeGeomVerts = planeGeom.getVertices().size();
+		int dataIndex = 0;
+		double renderUnitsPerMeter = getRenderUnitsPerMeter();
+	      
+		for(int ndx = 0; ndx < planeGeomVerts; ndx++)
+		{
+			Vector3 tmp = planeGeom.getVertices().get(ndx);
+			double x = tmp.getX();
+			double y = tmp.getY();
+			
+			float tempFloat = array[dataIndex];
+			if(tempFloat == DATA_INVALID)
+				tempFloat = 0;
+			
+//			planeGeom.getVertices().get(ndx).set(x,tempFloat/ALTITUDE_SCALE,-y);	// NOTE: flip m_ Z axis in render (Y in latitude)
+			planeGeom.getVertices().get(ndx).set(x,tempFloat*renderUnitsPerMeter*ALTITUDE_SCALE,-y);	// NOTE: flip m_ Z axis in render (Y in latitude)
+			dataIndex++;
+		}
+		
+		int widthOfRow = columns;
+		dataIndex = dataIndex - widthOfRow;
+		
+		for(int ndx2 = 0; ndx2 < planeGeom2.getVertices().size(); ndx2++)
+		{
+			Vector3 tmp = planeGeom2.getVertices().get(ndx2);
+			double x = tmp.getX();
+			double y = tmp.getY();
+			
+			float tempFloat = array[dataIndex];
+			
+			if(tempFloat == DATA_INVALID)
+				tempFloat = 0;
+			
+//			planeGeom2.getVertices().get(ndx2).set(x,tempFloat/ALTITUDE_SCALE,-y);	// NOTE: flip m_ Z axis in render (Y in latitude)
+			planeGeom2.getVertices().get(ndx2).set(x,tempFloat*renderUnitsPerMeter*ALTITUDE_SCALE,-y);	// NOTE: flip m_ Z axis in render (Y in latitude)
+			
+			dataIndex++;
+		}
+		
+		MeshBasicMaterial meshMaterial = new MeshBasicMaterial();
+		MeshBasicMaterial meshMaterial2 = new MeshBasicMaterial();
+		
+		if( WITH_TEXTURE_MAPPING )
+		{
+			m_TextureLoadSequence=0;
+			m_RenderInhibited=true;  /* prevent rendering until both textures are loaded */
+			
+			/* with texture mapping */
+			Texture topTexture = new Texture(AppGlobal.TEXTURE_TOP_FILE, Texture_ImageLoad);
+			meshMaterial.setMap( topTexture );
+			topTexture.setNeedsUpdate(true);
+			
+			Texture botTexture = new Texture(AppGlobal.TEXTURE_BOT_FILE, Texture_ImageLoad);
+			meshMaterial2.setMap( botTexture );
+			botTexture.setNeedsUpdate(true);
+		}
+		else
+		{
+			/* for just wireframe */
+			meshMaterial.setColor(new Color(0x0000ff));
+			meshMaterial.setWireframe(true);
+			meshMaterial.setTransparent(true);
+			
+			meshMaterial2.setColor(new Color(0x00ff00));
+			meshMaterial2.setWireframe(true);
+			meshMaterial2.setTransparent(true);
+		}
+		
+		Mesh meshGrid = new Mesh(planeGeom, meshMaterial);
+		Mesh meshGrid2 = new Mesh(planeGeom2, meshMaterial2);
+		meshGrid.setPosition(new Vector3(-1.0, 0, -(rowsUsed - 1) / 2.0));
+		meshGrid2.setPosition(new Vector3(-1.0, 0, heightLeft/ 2.0));
+		
+		m_Meshes.add(meshGrid);
+		m_Meshes.add(meshGrid2);
+		
+		getScene().add(m_Meshes);
+		
+		if( !WITH_TEXTURE_MAPPING )
+			armTheRenderer();
+	}
+
+    public void RenderPaths( PathResultClient[] paths, Double[] centerDeg, Double[] dimDeg, Integer[] dimensions )
+    {
+	   if(DEBUGGING)
+		   Trace.println("DemoScene03::RenderPaths(), count="+paths.length);
+	   
+		getScene().remove(m_SingleLines);
+		
+		for(ArrayList<Mesh> mList:m_Paths)
+		{
+			getScene().remove(mList);
+			
+			for( Mesh m: mList )
+			{
+				if( m.getGeometry()!=null )
+				{
+					m.getGeometry().dispose();
+	
+					m.deleteBuffers(getRenderer());
+					
+					if( m.getMaterial()!=null )
+					{
+						if( m.getMaterial() instanceof MeshBasicMaterial )
+						{
+							MeshBasicMaterial basic = (MeshBasicMaterial)m.getMaterial();
+							
+							if( basic.getMap()!=null && basic.getMap() instanceof Texture )
+								basic.getMap().deallocate(getRenderer());
+						}
+				
+//	causes error:				m.getMaterial().deallocate(getRenderer());
+					}
+				}
+			}
+		}
+		
+		for(Line l:m_SingleLines)
+		{
+			l.getGeometry().dispose();
+			l.deleteBuffers(getRenderer());
+	
+			if( l.getMaterial()!=null )
+			{
+				if( l.getMaterial() instanceof MeshBasicMaterial )
+				{
+					MeshBasicMaterial basic = (MeshBasicMaterial)l.getMaterial();
+					
+					if( basic.getMap()!=null && basic.getMap() instanceof Texture )
+						basic.getMap().deallocate(getRenderer());
+				}
+			
+//	causes error:			l.getMaterial().deallocate(getRenderer());
+			}
+		}
+		
+		for(ArrayList<Mesh>mList:m_Paths)
+			mList.clear();
+		
+		m_Paths.clear();
+		m_SingleLines.clear();
+		
+		for( PathResultClient path : paths )
+			if( path.getAdjustedData()!=null && path.getAdjustedData().length>0 )
+			{
+				if( WITH_SINGLE_LINE )
+				{
+					createOneLine( 
+							path.getPoints(), 
+							path.getAdjustedData(),
+							path.getColor(), 
+							centerDeg,
+							dimDeg, 
+							dimensions
+							);
+				}
+				else
+				{
+					createOnePath( 
+						path.getPoints(), 
+						path.getAdjustedData(),
+						path.getColor(), 
+						centerDeg,
+						dimDeg, 
+						dimensions
+						);
+				}
+			}
+		
+		getScene().add(m_SingleLines);
+		for(ArrayList<Mesh>mList:m_Paths)
+			getScene().add(mList);
+		
+		armTheRenderer();
+   }
+    
+	private void createOnePath( int nodes, Float[] data, Integer color, Double[] centerDeg, Double[] dimDeg, Integer[] dimensions )
+	{
+		if(DEBUGGING)
+			Trace.println("DemoScene03::createPath() nodes=" + nodes + ", size of data=" + data.length);
+		
+		double d = Dist(Subtract(m_Eye,new Vector3()));
+		double lowD = 5.0;
+		double highD = 150.0;
+		double lowS = 0.5;
+		double highS = 2.0;
+		double scale = Math.max(
+			lowS, Math.min(
+				highS, lowS + (
+					(highS - lowS) * ((d - lowD) - (highD - lowD)))
+				)
+			);
+	
+		Color thisColor = new Color(Util.ColorValuesHex[color]);
+		Color white = new Color(0xFFFFFF);
+		Color black = new Color(0x000000);
+		
+		double beta = 0.6;
+		
+		Color lighterColor = new Color();
+		lighterColor.setRGB((1.0-beta)*white.getR() + beta*thisColor.getR(), (1.0-beta)*white.getG() + beta*thisColor.getG(), (1.0-beta)*white.getB() + beta*thisColor.getB());
+		Color darkerColor = new Color();
+		darkerColor.setRGB((1.0-beta)*black.getR() + beta*thisColor.getR(), (1.0-beta)*black.getG() + beta*thisColor.getG(), (1.0-beta)*black.getB() + beta*thisColor.getB());
+		
+		ArrayList<Mesh>mList = new ArrayList<Mesh>();
+		
+		float max = Float.NEGATIVE_INFINITY;
+		float min = Float.POSITIVE_INFINITY;
+		int n = 0;
+		while(n < nodes*3)
+		{
+			if((data[n] <= (centerDeg[0] + 0.5*dimDeg[0])) && (data[n+1] >= (centerDeg[1] - 0.5*dimDeg[1]))
+				&& (data[n] >= (centerDeg[0] - 0.5*dimDeg[0])) && (data[n+1] <= (centerDeg[1] + 0.5*dimDeg[1])))
+			{
+				if(data[n+2] > max)
+					max = data[n+2];
+				if(data[n+2] < min)
+					min = data[n+2];
+			}
+			n+=3;
+		}
+		
+		double renderUnitsPerMeter = getRenderUnitsPerMeter();
+		
+		n = 0;
+		while(n < nodes*3)
+		{
+			if((data[n] <= (centerDeg[0] + 0.5*dimDeg[0])) && (data[n+1] >= (centerDeg[1] - 0.5*dimDeg[1]))
+				&& (data[n] >= (centerDeg[0] - 0.5*dimDeg[0])) && (data[n+1] <= (centerDeg[1] + 0.5*dimDeg[1])))
+			{
+				Vector3 pos = new Vector3(
+						CaloricPath.getSat().Focus_LonToCol(data[n+1]),
+//						(0.5 / ALTITUDE_SCALE) + (data[n+2] / ALTITUDE_SCALE),
+						(0.5 * renderUnitsPerMeter*ALTITUDE_SCALE) + (data[n+2] * renderUnitsPerMeter*ALTITUDE_SCALE),
+						-CaloricPath.getSat().Focus_LatToRow(data[n])	// NOTE: flip m_ Z axis in render (Y in latitude)
+						);
+				
+				double alpha = (data[n+2] - min)/(max - min);
+				Color newColor = new Color();
+				newColor.setRGB(
+					(1.0-alpha)*darkerColor.getR() + alpha*lighterColor.getR(),
+					(1.0-alpha)*darkerColor.getG() + alpha*lighterColor.getG(),
+					(1.0-alpha)*darkerColor.getB() + alpha*lighterColor.getB()
+					);
+				
+				MeshBasicMaterial wpMaterial = new MeshBasicMaterial();
+				wpMaterial.setColor(thisColor);
+				wpMaterial.setWireframe(false);
+				
+				BoxGeometry wayPoint = new BoxGeometry(2.0, 2.0, 2.0);
+//				BoxGeometry wayPoint = new BoxGeometry(scale, scale, scale);
+	//			TetrahedronGeometry wayPoint = new TetrahedronGeometry(1.0,0);
+				wpMaterial.setColor(newColor);
+				Mesh wayPointMesh = new Mesh(wayPoint,wpMaterial);
+				wayPointMesh.setPosition(pos);
+	
+				mList.add(wayPointMesh);
+			}
+			n += 3;
+		}
+		
+		m_Paths.add(mList);
+	}
+	
+	private void createOneLine( int nodes, Float[] data, Integer color, Double[] centerDeg, Double[] dimDeg, Integer[] dimensions )
+	{
+		if(DEBUGGING)
+			Trace.println("DemoScene03::createPath() nodes=" + nodes + ", size of data=" + data.length);
+		
+		ArrayList<Vector3> points = new ArrayList<Vector3>();
+		int n = 0;
+		while(n < nodes*3)
+		{
+			if((data[n] <= (centerDeg[0] + 0.5*dimDeg[0])) && (data[n+1] >= (centerDeg[1] - 0.5*dimDeg[1]))
+				&& (data[n] >= (centerDeg[0] - 0.5*dimDeg[0])) && (data[n+1] <= (centerDeg[1] + 0.5*dimDeg[1])))
+			{
+				Vector3 pos = new Vector3(
+						CaloricPath.getSat().Focus_LonToCol(data[n+1]),
+//						(data[n+2] / ALTITUDE_SCALE),
+						(data[n+2] * getRenderUnitsPerMeter()*ALTITUDE_SCALE),
+						-CaloricPath.getSat().Focus_LatToRow(data[n])	// NOTE: flip m_ Z axis in render (Y in latitude)
+						);
+	
+				points.add(pos);
+			}
+			n += 3;
+		}
+		Geometry geom = new Geometry();
+		geom.setVertices(points);
+		
+		LineBasicMaterial splineMaterial = new LineBasicMaterial();
+		splineMaterial.setColor(new Color(0xff0000));
+		splineMaterial.setLinewidth(100.0);
+		
+		m_SingleLines.add( new Line(geom, splineMaterial));
+	}
+	
+	private double getRenderUnitsPerMeter()
+	{
+		double widthRender = CaloricPath.getSat().DataDimensions.getValue()[0] - 1;
+		double heightRender = CaloricPath.getSat().DataDimensions.getValue()[1] - 1;
+		double widthRenderPerMeters = widthRender / (AppGlobal.METERS_PER_LON * CaloricPath.getSat().FocusDegrees.getValue()[1]);
+		double heightRenderPerMeters = heightRender / (AppGlobal.METERS_PER_LAT * CaloricPath.getSat().FocusDegrees.getValue()[0]);
+		//Trace.println("widthRender="+widthRender+", heightRender="+heightRender+", widthRPM="+widthRenderPerMeters+", heightRPM="+heightRenderPerMeters);
+		return (widthRenderPerMeters + heightRenderPerMeters) / 2.0;
+	}
+	
+	private double Dist(Vector3 d)
+	{
+		return Math.sqrt(d.getX()*d.getX() + d.getY()*d.getY() + d.getZ()*d.getZ());
+	}
+	
+	private Vector3 Add(Vector3 a, Vector3 b)
+	{
+		return new Vector3(a.getX()+b.getX(),a.getY()+b.getY(),a.getZ()+b.getZ());
+	}
+	
+	private Vector3 Multiply(double s, Vector3 a)
+	{
+		return new Vector3(s*a.getX(),s*a.getY(),s*a.getZ());
+	}
+	
+	private Vector3 Subtract(Vector3 a, Vector3 b)
+	{
+		return new Vector3(a.getX()-b.getX(),a.getY()-b.getY(),a.getZ()-b.getZ());
+	}
+	
+	private Vector3 Normalized(Vector3 a)
+	{
+		double l = a.length();
+		return new Vector3(a.getX()/l,a.getY()/l,a.getZ()/l);
+	}
+	
+	private Vector3 Cross(Vector3 a, Vector3 b)
+	{
+		return new Vector3(a.getY()*b.getZ() - a.getZ()*b.getY(),
+			a.getZ()*b.getX() - a.getX()*b.getZ(),
+			a.getX()*b.getY() - a.getY()*b.getX());
+	}
+
+	public RenderView getRenderView()
+	{
+		return new RenderView(
+				new Double[] {m_Eye.getX(), m_Eye.getY(), m_Eye.getZ()},
+				new Double[] {m_LookAt.getX(), m_LookAt.getY(), m_LookAt.getZ()},
+				m_Theta,
+				m_Phi,
+				m_NavMode
+				);
+	}
+	
+	public void WheelMove(int deltaY)
+	{
+		/* deltaY, if negative, mouse wheel moving up, should be zooming in aka moving in
+		 * 			if positive, mouse wheel moving down, should be zooming out aka moving out
+		 */
+		if(DEBUGGING)
+			Trace.println("DemoScene03::WheelMove");
+		
+		Vector3 w = Normalized(Subtract(m_Eye,m_LookAt));
+		Vector3 u = Normalized(Cross(UP_VECTOR,w));
+		Vector3 v = Normalized(Cross(w,u));
+		
+		m_Eye = Add(m_Eye,Multiply(deltaY,w));
+		m_LookAt = Add(m_LookAt,Multiply(deltaY,w));
+		
+		m_Camera.setPosition(m_Eye);
+		m_Camera.lookAt(m_LookAt);
+		
+		sendUpdate();
+		armTheRenderer();
+	}
+	
+	public void DragWorld(int dx, int dy)
+	{
+		/* move look at point, recalculate theta, phi */
+		if(DEBUGGING)
+			Trace.println("DemoScene03::DragWorld(), dx="+dx+", dy="+dy+", phi="+m_Phi);
+		
+		Vector3 w = Normalized(Subtract(m_DragEyeStart,m_DragLookAtStart));
+		Vector3 u = Normalized(Cross(UP_VECTOR,w));
+		Vector3 v = Normalized(Cross(w,u));
+		
+		m_Eye = Add(m_DragEyeStart,Multiply(-0.1*dx,u));
+		m_Eye = Add(m_Eye,Multiply(0.1*dy,v));
+		
+		m_LookAt = Add(m_DragLookAtStart,Multiply(-0.1*dx,u));
+		m_LookAt = Add(m_LookAt,Multiply(0.1*dy,v));
+		
+//		double deltaY = m_Eye.getY() - m_LookAt.getY();
+//		double deltaX = m_Eye.getX() - m_LookAt.getX();
+//		double deltaZ = m_Eye.getZ() - m_LookAt.getZ();
+//		double width = Math.sqrt(
+//			deltaX*deltaX +
+//			deltaZ*deltaZ
+//			);
+//		
+//		if(deltaY == 0.0)
+//			m_Phi = 0.0;
+//		else if(deltaY > 0.0)
+//			m_Phi = -Math.toDegrees(Math.atan(Math.toRadians(deltaY / width)));
+//		else // height < 0.0
+//			m_Phi = Math.toDegrees(Math.atan(Math.toRadians(deltaY / width)));
+//		
+//		m_Theta = Math.toDegrees(Math.atan(Math.toRadians(-deltaZ / deltaX)));	
+		
+		m_Camera.setPosition(m_Eye );
+		m_Camera.lookAt(m_LookAt);
+
+		armTheRenderer();
+	}
+	
+	public void DragCamera( int dx, int dy)
+	{
+		/* move phi and theta, recalculate eye */
+		if(DEBUGGING)
+			Trace.println("DemoScene03::DragCamera, dx="+dx+", dy="+dy+", phi="+m_Phi);
+		
+		
+		double theta = m_DragThetaStart;
+		double phi = m_DragPhiStart;
+		
+		theta += 0.1*dx;
+		phi -= 0.1*dy;
+		
+		if(phi < -85.0)
+			phi = -85.0;
+		else if(phi > 85.0)
+			phi = 85.0;
+		
+		Vector3 delta = Subtract(m_DragEyeStart, m_DragLookAtStart);
+		double r = Math.sqrt(delta.getX() * delta.getX()
+			+ delta.getY() * delta.getY()
+			+ delta.getZ() * delta.getZ());
+		
+		m_Eye = Subtract(m_DragLookAtStart, new Vector3(
+			r * Math.cos(Math.toRadians(phi)) * Math.cos(Math.toRadians(theta)),
+			r * Math.sin(Math.toRadians(phi)),
+			r * Math.cos(Math.toRadians(phi)) * Math.cos(Math.toRadians(90.0 - theta)))
+			);
+			
+		
+		m_Theta = theta;
+		m_Phi = phi;
+		m_Camera.setPosition(m_Eye);
+		m_Camera.lookAt(m_LookAt);
+		
+		armTheRenderer();
+	}
+//	
+//	public void moveIn()
+//	{
+//		if(DEBUGGING)
+//			Trace.println("DemoScene03::moveIn");
+//		
+//		Vector3 w = Normalized(Subtract(m_Eye,m_LookAt));
+//		Vector3 u = Normalized(Cross(UP_VECTOR,w));
+//		Vector3 v = Normalized(Cross(w,u));
+//		
+//		m_Eye = Add(m_Eye,Multiply(-MOVE,w));
+//		m_LookAt = Add(m_LookAt,Multiply(-MOVE,w));
+//		
+//		m_Camera.setPosition(m_Eye);
+//		m_Camera.lookAt(m_LookAt);
+//		armTheRenderer();
+//		
+//		setTheTimer();
+//	}
+//	
+//	public void moveOut()
+//	{
+//		if(DEBUGGING)
+//			Trace.println("DemoScene03::moveOut");
+//		
+//		Vector3 w = Normalized(Subtract(m_Eye,m_LookAt));
+//		Vector3 u = Normalized(Cross(UP_VECTOR,w));
+//		Vector3 v = Normalized(Cross(w,u));
+//		
+//		m_Eye = Add(m_Eye,Multiply(MOVE,w));
+//		m_LookAt = Add(m_LookAt,Multiply(MOVE,w));
+//		
+//		m_Camera.setPosition(m_Eye);
+//		m_Camera.lookAt(m_LookAt);
+//		armTheRenderer();
+//		
+//		setTheTimer();
+//	}
+//	
+//	public void moveLeft()
+//	{
+//		if(DEBUGGING)
+//			Trace.println("DemoScene03::moveLeft");
+//		
+//		Vector3 w = Normalized(Subtract(m_Eye,m_LookAt));
+//		Vector3 u = Normalized(Cross(UP_VECTOR,w));
+//		Vector3 v = Normalized(Cross(w,u));
+//		
+//		m_Eye = Add(m_Eye,Multiply(-MOVE,u));
+//		m_LookAt = Add(m_LookAt,Multiply(-MOVE,u));
+//		
+//		m_Camera.setPosition(m_Eye);
+//		m_Camera.lookAt(m_LookAt);
+//		armTheRenderer();
+//		
+//		setTheTimer();
+//	}
+//	
+//	public void moveRight()
+//	{
+//		if(DEBUGGING)
+//			Trace.println("DemoScene03::moveRight");
+//		
+//		Vector3 w = Normalized(Subtract(m_Eye,m_LookAt));
+//		Vector3 u = Normalized(Cross(UP_VECTOR,w));
+//		Vector3 v = Normalized(Cross(w,u));
+//		
+//		m_Eye = Add(m_Eye,Multiply(MOVE,u));
+//		m_LookAt = Add(m_LookAt,Multiply(MOVE,u));
+//		
+//		m_Camera.setPosition(m_Eye);
+//		m_Camera.lookAt(m_LookAt);
+//		armTheRenderer();
+//		
+//		setTheTimer();
+//	}
+//	
+//	public void rotateLeft()
+//	{
+//		if(DEBUGGING)
+//			Trace.println("DemoScene03::rotateLeft");
+//		
+//		m_Theta += ((360.0 / getCanvas().getWidth()) * -MOVE);
+//		
+//		m_LookAt = Add(m_Eye, new Vector3(
+//			Math.cos(Math.toRadians(m_Phi)) * Math.cos(Math.toRadians(m_Theta)),
+//			Math.sin(Math.toRadians(m_Phi)),
+//			Math.cos(Math.toRadians(m_Phi)) * Math.cos(Math.toRadians(90.0-m_Theta))));
+//		
+//		m_Camera.lookAt(m_LookAt);
+//		armTheRenderer();
+//		
+//		setTheTimer();
+//	}
+//	
+//	public void rotateRight()
+//	{
+//		if(DEBUGGING)
+//			Trace.println("DemoScene03::rotateRight");
+//		
+//		m_Theta += ((360.0 / getCanvas().getWidth()) * MOVE);
+//		
+//		m_LookAt = Add(m_Eye, new Vector3(
+//				Math.cos(Math.toRadians(m_Phi)) * Math.cos(Math.toRadians(m_Theta)),
+//				Math.sin(Math.toRadians(m_Phi)),
+//				Math.cos(Math.toRadians(m_Phi)) * Math.cos(Math.toRadians(90.0-m_Theta))));
+//		
+//		m_Camera.lookAt(m_LookAt);
+//		armTheRenderer();
+//		
+//		setTheTimer();
+//	}
+//	
+//	public void rotateUp()
+//	{
+//		if(DEBUGGING)
+//			Trace.println("DemoScene03::rotateUp");
+//		
+//		m_Phi -= ((180.0 / getCanvas().getHeight()) * -MOVE);
+//		
+//		if(m_Phi < -80)
+//			m_Phi = -80;
+//		else if(m_Phi > 80)
+//			m_Phi = 80;
+//		
+//		m_LookAt = Add(m_Eye, new Vector3(
+//				Math.cos(Math.toRadians(m_Phi)) * Math.cos(Math.toRadians(m_Theta)),
+//				Math.sin(Math.toRadians(m_Phi)),
+//				Math.cos(Math.toRadians(m_Phi)) * Math.cos(Math.toRadians(90.0-m_Theta))));
+//		
+//		m_Camera.lookAt(m_LookAt);
+//		armTheRenderer();
+//		
+//		setTheTimer();
+//	}
+//	
+//	public void rotateDown()
+//	{
+//		if(DEBUGGING)
+//			Trace.println("DemoScene03::rotateDown");
+//		
+//		m_Phi -= ((180.0 / getCanvas().getHeight()) * MOVE);
+//		
+//		if(m_Phi < -80)
+//			m_Phi = -80;
+//		else if(m_Phi > 80)
+//			m_Phi = 80;
+//		
+//		m_LookAt = Add(m_Eye, new Vector3(
+//				Math.cos(Math.toRadians(m_Phi)) * Math.cos(Math.toRadians(m_Theta)),
+//				Math.sin(Math.toRadians(m_Phi)),
+//				Math.cos(Math.toRadians(m_Phi)) * Math.cos(Math.toRadians(90.0-m_Theta))));
+//		
+//		m_Camera.lookAt(m_LookAt);
+//		armTheRenderer();
+//		
+//		setTheTimer();
+//	}
+//	
+	
+	void sendUpdate()
+	{
+		if(DEBUGGING) Trace.println("DemoScene03::sendUpdate()");
+		
+		try
+		{
+			CaloricPath.getView().View.setValue(getRenderView());
+		}
+		catch(Exception e)
+		{
+			Trace.println("DemoScene03::sendUpdate::run(), setView failed, e="+e.getMessage());
+		}
+	}
+	
+	private Timer m_Timer = new Timer()
+	{
+		@Override
+		public void run()
+		{
+			if(DEBUGGING) Trace.println("DemoScene03::TIMER_TICK()");
+			sendUpdate();
+		}
+	};
+	
+	private void cancelTheTimer()
+	{
+		if(DEBUGGING) Trace.println("DemoScene03::cancelTheTimer()");
+		m_Timer.cancel();
+	}
+	
+	private void startTheTimer()
+	{
+		if(DEBUGGING) Trace.println("DemoScene03::startTheTimer()");
+		m_Timer.cancel();
+		m_Timer.scheduleRepeating(500);
+	}
+	
+	Vector3 m_DragEyeStart;
+	Vector3 m_DragLookAtStart;
+	double m_DragThetaStart;
+	double m_DragPhiStart;
+	boolean m_Dragging=false;
+	public boolean getIsDragging() { return m_Dragging; }
+	
+	public void StartDragging()
+	{
+		if(DEBUGGING) Trace.println("DemoScene03::StartDragging()");
+		m_DragEyeStart = m_Eye.clone();
+		m_DragLookAtStart = m_LookAt.clone();
+		m_DragThetaStart = m_Theta;
+		m_DragPhiStart = m_Phi;
+		m_Dragging=true;
+
+		startTheTimer();
+	}
+	
+	public void StopDragging()
+	{
+		if(DEBUGGING) Trace.println("DemoScene03::StopDragging()");
+		cancelTheTimer();
+		sendUpdate();
+		m_Dragging=false;
+	}
+	
+	private Vector3 toVec(Double[] a)
+	{
+		return new Vector3(a[0], a[1], a[2]);
+	}
+	
+//	private double latToRender(double lat, double centerLat, double heightLat, int rows)
+//	{
+//		double rowsPerDegreeLatitude = rows / heightLat;
+//		double topLatitude = centerLat + (heightLat / 2.0);
+//		double bottomLatitude = topLatitude - heightLat;
+//		double clippedLat = Math.max(bottomLatitude, lat);
+//		clippedLat = Math.min(clippedLat, topLatitude);
+//		double differenceInLatitudeFromBot = clippedLat - bottomLatitude;
+//		double differenceInLatitudeFromTop = heightLat - differenceInLatitudeFromBot;
+//		double rowsFromTop = differenceInLatitudeFromTop * rowsPerDegreeLatitude;
+//		double retn = (rows / 2.0) - rowsFromTop;
+//		return retn;
+//	}
+//	
+//	private double lonToRender(double lon, double centerLon, double widthLon, int cols)
+//	{
+//		double colsPerDegreeLongitude = cols / widthLon;
+//		double leftLongitude = centerLon - (widthLon / 2.0);
+//		double rightLongitude = leftLongitude + widthLon;
+//		double clippedLon = Math.min(rightLongitude, lon);
+//		clippedLon = Math.max(clippedLon, leftLongitude);
+//		double differenceInLongitudeFromLeft = clippedLon - leftLongitude;
+//		double colsFromLeft = differenceInLongitudeFromLeft * colsPerDegreeLongitude;
+//		double retn = colsFromLeft - ((double)cols / 2.0);
+//		return retn;
+//	}
+}
+
+

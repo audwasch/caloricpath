@@ -1,0 +1,62 @@
+package com.caloricpath.client;
+
+import com.google.gwt.user.client.rpc.RemoteService;
+import com.google.gwt.user.client.rpc.RemoteServiceRelativePath;
+
+/**
+ * The client-side stub for the RPC service.
+ */
+
+@RemoteServiceRelativePath("image")
+public interface ImageService 
+	extends RemoteService 
+{
+	Boolean initialize();
+	String createTexture(Double top, Double left, Double width, Double height) throws Exception;
+	String createOrigTexture() throws Exception;
+
+//	Boolean println(String input);
+//	Integer Connect() throws Exception;
+//	Integer Disconnect(int id) throws Exception;
+//	String[] Poll( int id ) throws Exception;
+//	
+//	Integer Execute( String key, String[] parameters ) throws Exception;
+//	
+//	Integer setValue_Integer( String key, Integer newValue ) throws Exception;
+//	Integer getValue_Integer( int id, String key ) throws Exception;
+//	Integer setValue_ArrayInteger( String key, Integer[] newValue ) throws Exception;
+//	Integer[] getValue_ArrayInteger( int id, String key ) throws Exception;	
+//	
+//	Integer setValue_Byte( String key, Byte newValue ) throws Exception;
+//	Byte getValue_Byte( int id, String key ) throws Exception;
+//	Integer setValue_ArrayByte( String key, Byte[] newValue ) throws Exception;
+//	Byte[] getValue_ArrayByte( int id, String key ) throws Exception;
+//	
+//	Integer setValue_String( String key, String newValue ) throws Exception;
+//	String getValue_String( int id, String key ) throws Exception;
+//	Integer setValue_ArrayString( String key, String[] newValue ) throws Exception;
+//	String[] getValue_ArrayString( int id, String key ) throws Exception;	
+//	
+//	Integer setValue_Double( String key, Double newValue ) throws Exception;
+//	Double getValue_Double( int id, String key ) throws Exception;
+//	Integer setValue_ArrayDouble( String key, Double[] newValue ) throws Exception;
+//	Double[] getValue_ArrayDouble( int id, String key ) throws Exception;	
+//	
+//	Integer setValue_Boolean( String key, Boolean newValue ) throws Exception;
+//	Boolean getValue_Boolean( int id, String key ) throws Exception;
+//	Integer setValue_ArrayBoolean( String key, Boolean[] newValue ) throws Exception;
+//	Boolean[] getValue_ArrayBoolean( int id, String key ) throws Exception;
+//	
+//	Integer setValue_Float( String key, Float newValue ) throws Exception;
+//	Float getValue_Float( int id, String key ) throws Exception;
+//	Integer setValue_ArrayFloat( String key, Float[] newValue ) throws Exception;
+//	Float[] getValue_ArrayFloat( int id, String key ) throws Exception;	
+//	
+//	Integer setValue_Class( String key, Byte[] newValue ) throws Exception;
+//	Byte[] getValue_Class( int id, String key ) throws Exception;
+//	Integer setValue_ArrayClass( String key, Byte[] newValue ) throws Exception;
+//	Byte[] getValue_ArrayClass( int id, String key ) throws Exception;
+//	
+//	Integer SavePropertiesToFile( String filename ) throws Exception ;
+//	Integer RestoreAllProperties( String filename ) throws Exception ;
+}

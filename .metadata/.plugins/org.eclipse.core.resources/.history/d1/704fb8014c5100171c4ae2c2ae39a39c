@@ -1,0 +1,51 @@
+package com.caloricpath.server;
+
+import com.caloricpath.shared.Constraint;
+import com.caloricpath.shared.ConstraintCollectionClass;
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.Trace;
+
+public class ConstraintCollectionServer
+	extends ConstraintCollectionClass
+{
+	private ConstraintProcessor m_Processor;
+	
+	public ConstraintProcessor getProcessor() { return m_Processor; }
+	
+	public ConstraintCollectionServer(String name)
+	{
+		super(name);
+		
+		m_Processor = new ConstraintProcessor();
+		List.ChangedEvent.add(List_Changed);
+		ImageServiceImpl.getSat().FileName.ChangedEvent.add(FileName_Changed);
+	}
+	
+	private HandleChanged<String> FileName_Changed =
+			new HandleChanged<String>()
+	{
+		@Override
+		public void Changed(String newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("ConstraintCollectionServer::SatFile:FileName_Changed, newValue="+(newValue==null ? "null" : newValue));
+			
+			if(List.getValue() != null && List.getValue().length > 0)
+				m_Processor.OnNewData(List.getValue());
+		}
+	};
+	
+	private HandleChanged<Constraint[]> List_Changed =
+			new HandleChanged<Constraint[]>()
+	{
+		@Override
+		public void Changed(Constraint[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("ConstraintCollectionServer::List_Changed, n="+(newValue==null?"null":newValue.length));
+			
+			if(newValue != null)
+				m_Processor.OnNewData(newValue);
+		}
+	};
+}

@@ -1,0 +1,159 @@
+/*
+ * @author: Audrey Waschura
+ */
+package com.caloricpath.client;
+
+import java.util.ArrayList;
+
+import com.caloricpath.client.PathConfigClient;
+import com.caloricpath.shared.AlgorithmProperties;
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.RpcClass;
+import com.rpc.shared.RpcPropertyArrayClass;
+import com.rpc.shared.RpcPropertyClass;
+import com.rpc.shared.Trace;
+
+public class PathConfigCollectionClient
+	extends RpcClass
+{
+	private boolean DEBUGGING=false;
+	
+	public RpcPropertyArrayClass<PathConfigClient> List = 
+		new RpcPropertyArrayClass<PathConfigClient>("List",new PathConfigClient[0],READWRITE+SAVERESTORE)
+		{
+			@Override
+			public PathConfigClient[] CreateArray(int dimension) 
+			{	
+				PathConfigClient[] retn = new PathConfigClient[dimension];
+				for( int n=0; n<retn.length; n++ )
+					retn[n] = new PathConfigClient();
+				
+				return retn;
+			}
+		};
+		
+	public RpcPropertyClass<AlgorithmProperties> Algorithm = new RpcPropertyClass<AlgorithmProperties>("Algorithm",new AlgorithmProperties(),READWRITE+SAVERESTORE);
+
+	public PathConfigCollectionClient(String name)
+	{
+		super(name);
+		List.ChangedEvent.add(List_Changed);
+		Algorithm.ChangedEvent.add(Algorithm_Changed);
+		
+		//List.DEBUGGING=true;
+		//DEBUGGING=true;
+	}
+	
+	private HandleChanged<AlgorithmProperties> Algorithm_Changed =
+			new HandleChanged<AlgorithmProperties>()
+	{
+		@Override
+		public void Changed(AlgorithmProperties newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("PathConfigCollectionClient::Algorithm_Changed()");
+		}
+	};
+	
+	private HandleChanged<PathConfigClient[]> List_Changed =
+			new HandleChanged<PathConfigClient[]>()
+	{
+		@Override
+		public void Changed(PathConfigClient[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("PathConfigCollectionClient::List_Changed, n="+newValue.length);
+		}
+	};
+	
+	@Override
+	public void AttachMembers()
+	{
+		AttachMember( List );
+		AttachMember( Algorithm );
+	}
+
+	@Override
+	public void DetachMembers()
+	{
+		DetachMember( List );
+		DetachMember( Algorithm );
+	}
+	
+	public PathConfigClient LookupById(int id )
+	{
+		
+		for( int n=0; n<List.getValue().length; n++ )
+			if( List.getValue()[n].getId() == id )
+				return List.getValue()[n];
+		
+		return null;
+	}
+	
+	public void RemoveById( int id ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfigCollectionClient::RemoveById(), id="+id);
+		
+		ArrayList<PathConfigClient> temp = new ArrayList<PathConfigClient>();
+		
+		for( int n=0; n<List.getValue().length; n++ )
+		{
+			if( List.getValue()[n].getId() != id )
+			{
+				temp.add( List.getValue()[n] );
+			}
+		}
+		List.setValue( temp.toArray( new PathConfigClient[temp.size()]));
+	}
+	
+	public void RemoveAll() throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfigCollectionClient::RemoveAll()");
+		
+		List.setValue( new PathConfigClient[0] );
+	}
+
+	public int getUniqueId()
+	{
+		int maxn=0;
+		
+		for( int n=0; n<List.getValue().length; n++ )
+			if( List.getValue()[n].getId() > maxn )
+				maxn = List.getValue()[n].getId();
+
+		/* find maximum id in the list, or zero if none in list */
+		/* return +1 of that number */
+		
+		return maxn+1;
+	}
+	
+	public void AddSingle( PathConfigClient newValue ) throws Exception
+	{
+		if( newValue.getName()==null || newValue.getName().length()==0 )
+			throw new Exception("[Must_Have_Name]");
+		
+		if(DEBUGGING)
+			Trace.println("PathConfigCollectionClient::AddSingle(), name="+newValue.getName());
+		
+		if( LookupById(newValue.getId()) != null )
+			throw new Exception( "[Id_Already_Exists]");
+		
+		PathConfigClient[] temp = new PathConfigClient[ List.getValue().length + 1] ;
+		for( int n=0; n<List.getValue().length; n++ )
+			temp[n] = List.getValue()[n];
+		
+		temp[ List.getValue().length ] = newValue;
+		List.setValue( temp );
+	}
+	
+	public void AnnounceChanges()
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfigCollectionClient::AnnounceChanges()");
+		
+		List.AnnounceChanges();
+	}
+
+}

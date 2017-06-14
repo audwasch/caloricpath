@@ -1,0 +1,107 @@
+package com.caloricpath.server;
+
+import java.util.ArrayList;
+import com.caloricpath.server.PathStatusServer;
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.RpcClass;
+import com.rpc.shared.RpcPropertyArrayClass;
+import com.rpc.shared.Trace;
+
+public class PathStatusCollectionServer
+	extends RpcClass
+{
+	
+	public RpcPropertyArrayClass<PathStatusServer> List = 
+		new RpcPropertyArrayClass<PathStatusServer>("List",new PathStatusServer[0],READWRITE+SAVERESTORE)
+		{
+			@Override
+			public PathStatusServer[] CreateArray(int dimension) 
+			{	
+				PathStatusServer[] retn = new PathStatusServer[dimension];
+				for( int n=0; n<retn.length; n++ )
+					retn[n] = new PathStatusServer();
+				
+				return retn;
+			}
+		};
+
+	public PathStatusCollectionServer(String name)
+	{
+		super(name);
+		List.ChangedEvent.add(List_Changed);
+		//DEBUGGING=true;
+		//List.DEBUGGING=true;
+	}
+	
+	private HandleChanged<PathStatusServer[]> List_Changed =
+			new HandleChanged<PathStatusServer[]>()
+	{
+		@Override
+		public void Changed(PathStatusServer[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("PathStatusCollectionServer::List_Changed, n="+newValue.length);
+		}
+	};
+
+	@Override
+	public void AttachMembers()
+	{
+		AttachMember( List );
+	}
+
+	@Override
+	public void DetachMembers()
+	{
+		DetachMember( List );
+	}
+	
+	public PathStatusServer LookupById(int id )
+	{
+		for( int n=0; n<List.getValue().length; n++ )
+			if( List.getValue()[n].getId() == id )
+				return List.getValue()[n];
+		
+		return null;
+	}
+	
+	public void RemoveById( int id ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatusCollectionServer::RemoveById(), id="+id);
+		
+		ArrayList<PathStatusServer> temp = new ArrayList<PathStatusServer>();
+		
+		for( int n=0; n<List.getValue().length; n++ )
+			if( List.getValue()[n].getId() != id )
+				temp.add( List.getValue()[n] );
+		
+		List.setValue( temp.toArray( new PathStatusServer[temp.size()]));
+	}
+	
+	
+	
+	public void AddSingle( PathStatusServer newValue ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatusCollectionServer::AddSingle(), id="+newValue.getId());
+		
+		if( LookupById(newValue.getId()) != null )
+			throw new Exception( "[Id_Already_Exists]");
+		
+		PathStatusServer[] temp = new PathStatusServer[ List.getValue().length + 1] ;
+		for( int n=0; n<List.getValue().length; n++ )
+			temp[n] = List.getValue()[n];
+		
+		temp[ List.getValue().length ] = newValue;
+		List.setValue( temp );
+	}
+
+	public void AnnounceChanges()
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatusCollectionServer::AnnounceChanges()");
+		
+		List.AnnounceChanges();
+	}
+}

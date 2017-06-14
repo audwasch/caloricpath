@@ -1,0 +1,596 @@
+package com.caloricpath.server;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import com.caloricpath.shared.AppGlobal;
+import com.caloricpath.shared.Constraint;
+import com.rpc.shared.Trace;
+
+public class ConstraintProcessor
+{
+	private static boolean DEBUGGING = true;
+	
+	private static HashMap<Integer, Double> m_Map;
+	
+	private class Poly
+	{
+		public Double[] m_data;
+		public Constraint m_c;
+		
+		public Poly(Double[] d, Constraint c)
+		{
+			m_data = d;
+			m_c = c;
+		}
+	}
+	
+	public ConstraintProcessor()
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintProcessor::ConstraintProcessor()");
+		
+		m_Map = new HashMap<Integer, Double>();
+	}
+	
+	public void OnNewData(Constraint[] newData)
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintProcessor::OnNewData(), n="+newData.length);
+		
+		clearMap();
+		buildMap(newData);
+	}
+	
+	public boolean InMap(int index)
+	{
+		return m_Map.containsKey(index);
+	}
+	
+	public double GetValue(int index)
+	{
+		return m_Map.get(index);
+	}
+	
+	private void clearMap()
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintProcessor::clearMap()");
+		
+		m_Map.clear();
+	}
+	
+	private void buildMap(Constraint[] newData)
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintProcessor::buildMap(), n="+newData.length);
+		
+		for( Constraint c : newData )
+		{
+			if(c.getType() == Constraint.ConstraintType.LineConstraint)
+				processLine(c);
+			else //c.getType() == Constraint.ConstraintType.PolygonConstraint
+				processPolygon(c);
+		}
+		Trace.println("restarting all paths");
+		ImageServiceImpl.getPathProcessor().RestartAll();
+	}
+	
+	private void findPolyIndices(Poly p, double minX, double minY, double maxX, double maxY)
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintProcessor::findPolyIndices()");
+		
+		//from given bounding extents, determine search space of sat file
+//		int left = PathComputation.lonToCol(minX);
+//		int right = PathComputation.lonToCol(maxX);
+//		int top = PathComputation.latToRow(maxY);
+//		int bot = PathComputation.latToRow(minY);
+		int left = ImageServiceImpl.getSat().File_LonToCol(minX);
+		int right = ImageServiceImpl.getSat().File_LonToCol(maxX);
+		int top = ImageServiceImpl.getSat().File_LatToRow(maxY);
+		int bot = ImageServiceImpl.getSat().File_LatToRow(minY);
+		
+		//for each candidate index, calculate distance and resulting cost
+		for(int col = left; col <= right; col++)
+		{
+			for(int row = top; row <= bot; row++)
+			{
+//				double lat = PathComputation.rowToLat(row);
+//				double lon = PathComputation.colToLon(col);
+				double lat = ImageServiceImpl.getSat().File_RowToLat(row);
+				double lon = ImageServiceImpl.getSat().File_RowToLat(col);
+				
+				if(isInPoly(p.m_c.getData(), lon, lat))
+				{
+					//inside original, set full cost
+					addMap(PathComputation.rowColumnToIndex(row,  col), p.m_c.getCost());
+				}
+				else if(isInPoly(p.m_data, lon, lat))
+				{
+					//within bounding poly, outside original poly
+					if(p.m_c.getDistribution() == Constraint.DistributionType.BinaryDistribution)
+						addMap(PathComputation.rowColumnToIndex(row, col), p.m_c.getCost());
+					else
+					{
+						double d = distPointToPoly(p.m_c.getData(), lon, lat);
+						double fullD = metersToDegrees(p.m_c.getDistance() / 2.0);
+						if(p.m_c.getDistribution() == Constraint.DistributionType.LinearDistribution)
+						{
+							double c = p.m_c.getCost() - d*(p.m_c.getCost()/fullD);
+							addMap(PathComputation.rowColumnToIndex(row, col), c);
+						}
+						else //Constraint.DistributionType.QuadraticDistribution
+						{
+							double c = p.m_c.getCost() * (square(fullD) - square(d));
+							addMap(PathComputation.rowColumnToIndex(row, col), c);
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	private double distPointToPoly(Double[] d, double x, double y)
+	{
+		double retn = Double.POSITIVE_INFINITY;
+		int i, j;
+		for(i = 0, j = (d.length / 2) - 1; i < (d.length / 2); j = i++)
+		{
+			double x0 = d[2*i];
+			double y0 = d[2*i + 1];
+			double x1 = d[2*j];
+			double y1 = d[2*j + 1];
+			
+			if(shortestPointOnSegment(x0, y0, x1, y1, x, y))
+			{
+				//see: http://mathworld.wolfram.com/Point-LineDistance2-Dimensional.html
+				double dist = Math.abs(((x1-x0) * (y0-y)) - ((x0-x) * (y1-y0))) / Math.sqrt(square(x1-x0) + square(y1-y0));
+				//if less than retn, set retn
+				if(dist < retn)
+					retn = dist;
+			}
+		}
+		
+		return retn;
+	}
+	
+	private boolean shortestPointOnSegment(double x0, double y0, double x1, double y1, double x, double y)
+	{
+		//http://stackoverflow.com/questions/10301001/perpendicular-on-a-line-segment-from-a-given-point
+		double t = ((x-x0)*(x1-x0) + (y-y0)*(y1-y0)) / (square(x1-x0) + square(y1-y0));
+		double px = x0 + t*(x1-x0);
+		double py = y0 + t*(y1-y0);
+		
+		if(within(px, x0, x1) && within(py, y0, y1))
+			return true;
+		return false;
+	}
+	
+	private boolean within(double p, double a, double b)
+	{
+		if(p==a || p==b || ((p>a) != (p>b)))
+			return true;
+		return false;
+	}
+	
+	private void findLineIndices(ArrayList<Poly> polys, double minX, double minY, double maxX, double maxY)
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintProcessor::findLineIndices()");
+		
+		//from given bounding extents, determine search space of sat file
+//		int left = PathComputation.lonToCol(minX);
+//		int right = PathComputation.lonToCol(maxX);
+//		int top = PathComputation.latToRow(maxY);
+//		int bot = PathComputation.latToRow(minY);
+		int left = ImageServiceImpl.getSat().File_LonToCol(minX);
+		int right = ImageServiceImpl.getSat().File_LonToCol(maxX);
+		int top = ImageServiceImpl.getSat().File_LatToRow(maxY);
+		int bot = ImageServiceImpl.getSat().File_LatToRow(minY);
+		
+		//for each candidate index, calculate distance and resulting cost
+		for(int col = left; col <= right; col++)
+		{
+			for(int row = top; row <= bot; row++)
+			{
+//				double lat = PathComputation.rowToLat(row);
+//				double lon = PathComputation.colToLon(col);
+				double lat = ImageServiceImpl.getSat().File_RowToLat(row);
+				double lon = ImageServiceImpl.getSat().File_ColToLon(col);
+				boolean assigned = false;
+				
+				for(int ndx = 0; ndx < polys.size() && !assigned; ndx++)
+				{
+					Poly p = polys.get(ndx);
+					if(isInPoly(p.m_data, lon, lat))
+					{
+						//calculate distance from constraint line and resulting cost
+						if(p.m_c.getDistribution() == Constraint.DistributionType.BinaryDistribution)
+							addMap(PathComputation.rowColumnToIndex(row, col), p.m_c.getCost());
+						else
+						{
+							double d = distPointToLines(p.m_c.getData(), lon, lat);
+							double fullD = metersToDegrees(p.m_c.getDistance() / 2.0);
+							if(p.m_c.getDistribution() == Constraint.DistributionType.LinearDistribution)
+							{
+								double c = p.m_c.getCost() - d*(p.m_c.getCost()/fullD);
+								addMap(PathComputation.rowColumnToIndex(row, col), c);
+							}
+							else // Constraint.DistributionType.QuadraticDistribution
+							{
+								double c = p.m_c.getCost() * (square(fullD) - square(d));
+								addMap(PathComputation.rowColumnToIndex(row, col), c);
+							}
+						}
+						
+						assigned = true;
+					}
+				}
+			}
+		}
+	}
+	
+	private double distPointToLines(Double[] data, double x, double y)
+	{
+		int segments = (data.length / 2) - 1;
+		double retn = Double.POSITIVE_INFINITY;
+		for(int i = 0; i < segments; i++)
+		{
+			//look at segment i and determine distance from point
+			double x0 = data[2*i];
+			double y0 = data[2*i + 1];
+			double x1 = data[2*(i+1)];
+			double y1 = data[2*(i+1) + 1];
+			
+			if(shortestPointOnSegment(x0, y0, x1, y1, x, y))
+			{
+				//see: http://mathworld.wolfram.com/Point-LineDistance2-Dimensional.html
+				double d = Math.abs(((x1-x0) * (y0-y)) - ((x0-x) * (y1-y0))) / Math.sqrt(square(x1-x0) + square(y1-y0));
+				//if less than retn, set retn
+				if(d < retn)
+					retn = d;
+			}
+		}
+		
+		return retn;
+	}
+	
+	private void addMap(int index, double cost)
+	{
+		if(m_Map.containsKey(index))
+			m_Map.replace(index, m_Map.get(index) + cost);
+		else //must create new entry
+			m_Map.put(index, cost);
+	}
+	
+	//see: http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html 
+	private boolean isInPoly(Double[] d, double x, double y)
+	{
+		int i, j;
+		boolean retn = false;
+		//# points = 4
+		//final int POINTS = 4;
+		int points = d.length / 2;
+		//ith x coord: d[2*i]
+		//ith y coord: d[2*i + 1]
+		
+		for(i = 0, j = points - 1; i < points; j = i++)
+		{
+			if( (d[2*i + 1] > y) != (d[2*j + 1] > y) &&
+				(x < (d[2*j] - d[2*i]) * (y - d[2*i + 1]) / (d[2*j + 1] - d[2*i + 1]) + d[2*i]))
+				retn = !retn;
+		}
+		
+		return retn;
+	}
+	
+	private void processLine(Constraint c)
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintProcessor::processLine(), id="+c.getId());
+
+		ArrayList<Poly> polys = new ArrayList<Poly>();
+		double maxX = 0.0;
+		double maxY = 0.0;
+		double minX = 0.0;
+		double minY = 0.0;
+		
+		int segments = c.getPoints() - 1;
+		for(int s = 0; s < segments; s++)
+		{
+			boolean isStart = s == 0;
+			boolean isEnd = (s == segments-1);
+			
+			//identify bounding polygon around segment with mitered edge, stored as 4 points (8 vals)
+			Double[] poly = boundSegment(c, s, isStart, isEnd);
+			if(s==0)
+			{
+				//initialize extents
+				maxX = findMaxX(poly);
+				maxY = findMaxY(poly);
+				minX = findMinX(poly);
+				minY = findMinY(poly);
+			}
+			else
+			{
+				if(findMaxX(poly) > maxX)
+					maxX = findMaxX(poly);
+				if(findMaxY(poly) > maxY)
+					maxY = findMaxY(poly);
+				if(findMinX(poly) < minX)
+					minX = findMinX(poly);
+				if(findMinY(poly) < minY)
+					minY = findMinY(poly);
+			}
+			polys.add(new Poly(poly, c));
+			//printPoly(poly);
+		}
+		findLineIndices(polys, minX, minY, maxX, maxY);
+	}
+	
+	private double findMaxX(Double[] poly)
+	{
+		double retn = Double.NEGATIVE_INFINITY;
+		//look through evens (x values)
+		for(int i = 0; i < poly.length; i+=2)
+			if(poly[i] > retn)
+				retn = poly[i];
+		return retn;
+	}
+	
+	private double findMaxY(Double[] poly)
+	{
+		double retn = Double.NEGATIVE_INFINITY;
+		//look through odds (y values)
+		for(int i = 1; i < poly.length; i+=2)
+			if(poly[i] > retn)
+				retn = poly[i];
+		return retn;
+	}
+	
+	private double findMinX(Double[] poly)
+	{
+		double retn = Double.POSITIVE_INFINITY;
+		//look through evens (x values)
+		for(int i = 0; i < poly.length; i+=2)
+			if(poly[i] < retn)
+				retn = poly[i];
+		return retn;
+	}
+	
+	private double findMinY(Double[] poly)
+	{
+		double retn = Double.POSITIVE_INFINITY;
+		//look through odds (y values)
+		for(int i = 1; i < poly.length; i+=2)
+			if(poly[i] < retn)
+				retn = poly[i];
+		return retn;
+	}
+	
+//	private void printPoly(Double[] poly)
+//	{
+//		Trace.println("POLYGON");
+//		Trace.println(poly[0]+"\t"+poly[1]);
+//		Trace.println(poly[2]+"\t"+poly[3]);
+//		Trace.println(poly[4]+"\t"+poly[5]);
+//		Trace.println(poly[6]+"\t"+poly[7]);
+//	}
+	
+	private Double[] boundSegment(Constraint c, int s, boolean start, boolean end)
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintProcessor::boundSegment(), id="+c.getId()+", s=" + s + ", start="+start+", end="+end);
+		
+		Double[] retn = {
+			0.0, 0.0,
+			0.0, 0.0,
+			0.0, 0.0,
+			0.0, 0.0
+			};
+		
+		double x0 = c.getData()[2*s];
+		double y0 = c.getData()[2*s + 1];
+		double x1 = c.getData()[2*(s+1)];
+		double y1 = c.getData()[2*(s+1) + 1];
+		
+		// convert distance from meters (user input & storage) 
+		//		into degrees (coordinate space for this math)
+		double d = metersToDegrees(c.getDistance() / 2.0);
+		
+		if(start)
+		{
+			double m = 0.0;
+			if(y0 == y1)	// horizontal line
+			{
+				// edge is vertical
+				double p0x = x0;
+				double p0y = y0 + d;
+				double p1x = x0;
+				double p1y = y0 - d;
+				retn[2*0] = p0x;
+				retn[2*0 + 1] = p0y;
+				retn[2*1] = p1x;
+				retn[2*1 + 1] = p1y;
+			}
+			else	// vertical or other line
+			{
+				if(x0 == x1)	// vertical line
+					m = 0.0;	// edge is horizontal
+				else
+					m = -1.0 / ( (y1 - y0) / (x1 - x0) );	// m' = -1 / m
+				
+				// use d, m, and (x0, y0) to calculate p0(+) and p1(-)
+				double u = Math.sqrt(1.0 + (m * m));
+				double p0x = x0 + (d / u);
+				double p0y = y0 + (d*m / u);
+				double p1x = x0 - (d / u);
+				double p1y = y0 - (d*m / u);
+				retn[2*0] = p0x;
+				retn[2*0 + 1] = p0y;
+				retn[2*1] = p1x;
+				retn[2*1 + 1] = p1y;
+			}
+		}
+		else
+		{
+			// create unit vectors sharing the origin (x0, y0)
+			double xPrev = c.getData()[2*(s-1)];
+			double yPrev = c.getData()[2*(s-1) + 1];
+			double mag0 = Math.sqrt(square(x0-xPrev) + square(y0-yPrev));
+			double v0x = (x0 - xPrev) / mag0;
+			double v0y = (y0 - yPrev) / mag0;
+			double mag1 = Math.sqrt(square(x1-x0) + square(y1-y0));
+			double v1x = (x1 - x0) / mag1;
+			double v1y = (y1 - y0) / mag1;
+			
+			// draw bisecting line: take average of the vectors!
+			double avgX = (v0x + v1x) / 2.0;
+			double avgY = (v0y + v1y) / 2.0;
+			
+			// use new average vector to get m, already have d, (x0, y0)
+			double m = (avgY - y0) / (avgX - x0);
+			double u = Math.sqrt(1.0 + (m * m));
+			double p0x = x0 + (d / u);
+			double p0y = y0 + (d*m / u);
+			double p1x = x0 - (d / u);
+			double p1y = y0 - (d*m / u);
+			retn[2*0] = p0x;
+			retn[2*0 + 1] = p0y;
+			retn[2*1] = p1x;
+			retn[2*1 + 1] = p1y;
+		}
+		if(end)
+		{
+			double m = 0.0;
+			if(y0 == y1)	// horizontal line
+			{
+				// edge is vertical
+				double p3x = x1;
+				double p3y = y1+d;
+				double p2x = x1;
+				double p2y = y1-d;
+				retn[2*2] = p2x;
+				retn[2*2 + 1] = p2y;
+				retn[2*3] = p3x;
+				retn[2*3 + 1] = p3y;
+			}
+			else	// vertical or other line
+			{
+				if(x0 == x1)	// vertical line
+					m = 0.0;	// edge is horizontal
+				else
+					m = -1.0 / ( (y1 - y0) / (x1 - x0) );	// m' = -1 / m
+				
+				// use d, m, and (x1, y1) to calculate p3(+) and p2(-)
+				double u = Math.sqrt(1.0 + (m * m));
+				double p3x = x1 + (d / u);
+				double p3y = y1 + (d*m / u);
+				double p2x = x1 - (d / u);
+				double p2y = y1 - (d*m / u);
+				retn[2*2] = p2x;
+				retn[2*2 + 1] = p2y;
+				retn[2*3] = p3x;
+				retn[2*3 + 1] = p3y;
+			}
+		}
+		else
+		{
+			// create unit vectors sharing the origin (x1, y1)
+			double xNext = c.getData()[2*(s+2)];
+			double yNext = c.getData()[2*(s+2) + 1];
+			double mag1 = Math.sqrt(square(xNext-x0) + square(yNext-y0));
+			double v1x = (xNext - x0) / mag1;
+			double v1y = (yNext - y0) / mag1;
+			double mag0 = Math.sqrt(square(x1-x0) + square(y1-y0));
+			double v0x = (x1 - x0) / mag0;
+			double v0y = (y1 - y0) / mag0;
+			
+			// draw bisecting line: take average of the vectors!
+			double avgX = (v0x + v1x) / 2.0;
+			double avgY = (v0y + v1y) / 2.0;
+			
+			// use new average vector to get m, already have d, (x1, y1)
+			double m = (avgY - y1) / (avgX - x1);
+			double u = Math.sqrt(1.0 + (m * m));
+			double p3x = x1 + (d / u);
+			double p3y = y1 + (d*m / u);
+			double p2x = x1 - (d / u);
+			double p2y = y1 - (d*m / u);
+			retn[2*2] = p2x;
+			retn[2*2 + 1] = p2y;
+			retn[2*3] = p3x;
+			retn[2*3 + 1] = p3y;
+		}
+		
+		return retn;
+	}
+	
+	private double metersToDegrees(double a) { return a / AppGlobal.METERS_PER_DEGREE; }
+	
+	private double square(double a) { return a * a; }
+	
+	private void processPolygon(Constraint c)
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintProcessor::processPolygon(), id="+c.getId());
+		
+		Double[] poly = boundPoly(c);
+		findPolyIndices(new Poly(poly, c), findMinX(poly), findMinY(poly), findMaxX(poly), findMaxY(poly));
+	}
+	
+	private Double[] boundPoly(Constraint c)
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintProcessor::boundPoly, id="+c.getId() + ", n="+c.getData().length);
+		
+		Double[] retn = new Double[c.getData().length];
+		double d = metersToDegrees(c.getDistance() / 2.0);
+		
+		int i, j;
+		for(i = 0, j = c.getPoints() - 1; i < c.getPoints(); j = i++)
+		{
+			//make unit vectors with origin 1 and going to 0 and to 2
+			double x0 = c.getData()[2*j];
+			double y0 = c.getData()[2*j + 1];
+			double x1 = c.getData()[2*i];
+			double y1 = c.getData()[2*i + 1];
+			double x2 = c.getData()[(2*(i+1)) % c.getData().length];
+			double y2 = c.getData()[(2*(i+1) + 1) % c.getData().length];
+			double mag0 = Math.sqrt(square(x1-x0) + square(y1-y0));
+			double v0x = (x1 - x0) / mag0;
+			double v0y = (y1 - y0) / mag0;
+			double mag2 = Math.sqrt(square(x2-x1) + square(y2-y1));
+			double v2x = (x2 - x1) / mag2;
+			double v2y = (y2 - y1) / mag2;
+			
+			//take average to get bisecting vector
+			double avgX = (v0x + v2x) / 2.0;
+			double avgY = (v0y + v2y) / 2.0;
+			
+			//use vector to get slope, already have d and point 1
+			double m = (avgY - y1) / (avgX - x1);
+			double u = Math.sqrt(1.0 + (m * m));
+			
+			//calculate outer point (create both, test which is in existing polygon, discard it)
+			double plusX = x1 + (0.001 / u);
+			double plusY = y1 + (0.001*m / u);
+			if(isInPoly(c.getData(),plusX,plusY))
+			{
+				//+ went inside poly, so use - instead
+				//place at ith point, because that's what we're extending from: (x1, y1)
+				retn[2*i] = x1 - (d / u);
+				retn[2*i + 1] = y1 - (d*m / u);
+			}
+			else
+			{
+				//+ is not inside poly, use +
+				retn[2*i] = x1 + (d / u);
+				retn[2*i + 1] = y1 + (d*m / u);
+			}
+		}
+		
+		return retn;
+	}
+}

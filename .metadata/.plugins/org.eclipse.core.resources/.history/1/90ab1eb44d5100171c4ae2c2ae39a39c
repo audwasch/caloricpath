@@ -1,0 +1,88 @@
+package com.caloricpath.shared;
+
+import com.rpc.shared.Packable;
+
+public class SatFileStatus extends Packable
+{
+	private String m_Name = "" ;
+	private Integer m_Samples = 0 ;
+	private Integer m_Lines = 0;
+	private Double[] m_Center = { 0.0, 0.0 };
+	private Double[] m_Degrees = { 0.0, 0.0 }; /* in Lat/Lon */
+	private Double[] m_Miles = { 0.0, 0.0 };
+	private Double[] m_NSEWDegrees = { 0.0, 0.0, 0.0, 0.0 };
+	
+
+	public String getName() { return m_Name; }
+	public int getSamples() { return m_Samples; }
+	public int getLines() { return m_Lines; }
+	public int getPoints() { return m_Samples*m_Lines; }
+	public Double[] getCenter() { return m_Center; } /* [Lat,Lon] */
+	public Double[] getDegrees() { return m_Degrees; } /* [HgtDegrees,WidthDegrees] */
+	public Double[] getMiles() { return m_Miles; } /* [HgtMiles,WidMiles] */
+	public Double[] getNSEWDegrees() { return m_NSEWDegrees; } /* [4] */
+	
+	public void setName( String newValue ) { m_Name=newValue; }
+	public void setSamples( int newValue ) { m_Samples = newValue; }
+	public void setLines( int newValue ) { m_Lines = newValue; }
+	public void setCenter( Double[] newValue ) { m_Center = newValue; }
+	public void setDegrees( Double[] newValue ) { m_Degrees = newValue; }
+	public void setMiles( Double[] newValue ) { m_Miles = newValue; }
+	public void setNSEWDegrees( Double[] newValue ) { m_NSEWDegrees = newValue; }
+
+	public double getWidthInMeters(){return getMiles()[1] * 1609.34;}
+	public double getHeightInMeters(){return getMiles()[0] * 1609.34;}
+	public double getResolutionLatitudeInMeters(){return (getLines()==0)? 0.0 : (getHeightInMeters() / (double)getLines());}
+	public double getResolutionLongitudeInMeters(){return (getSamples()==0)? 0.0 : (getWidthInMeters() / (double)getSamples());}
+	
+	
+	public void clear()
+	{
+		m_Name = "" ;
+		m_Samples = 0 ;
+		m_Lines = 0;
+		m_Center = new Double[] { 0.0, 0.0 };
+		m_Degrees = new Double[] { 0.0, 0.0 };
+		m_Miles = new Double[] { 0.0, 0.0 };
+		m_NSEWDegrees = new Double[] { 0.0, 0.0, 0.0, 0.0 };
+	}
+	
+	public String toString()
+	{
+		return "SatFileStatus: " + getName() ;
+	}
+	
+	@Override
+	public Byte[] Pack()
+	{
+		StartPacking();
+		
+		packString( m_Name );
+		packInt( m_Samples );
+		packInt( m_Lines );
+		packDoubleArray( m_Center );
+		packDoubleArray( m_Degrees );
+		packDoubleArray( m_Miles );
+		packDoubleArray( m_NSEWDegrees );
+		
+		return DonePacking();
+	}
+	
+	@Override
+	public int Unpack(Byte[] buf)  throws Exception 
+	{
+		StartUnpacking(buf);
+		
+		m_Name = unpackString();
+		m_Samples = unpackInt();
+		m_Lines = unpackInt();
+		m_Center = unpackDoubleArray();
+		m_Degrees = unpackDoubleArray();
+		m_Miles = unpackDoubleArray();
+		m_NSEWDegrees = unpackDoubleArray();
+		
+		return DoneUnpacking();	
+	}
+	
+	
+}

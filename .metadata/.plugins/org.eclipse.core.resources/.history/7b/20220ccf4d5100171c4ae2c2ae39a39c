@@ -1,0 +1,116 @@
+package com.caloricpath.shared;
+
+import com.rpc.shared.Packable;
+import com.rpc.shared.Trace;
+
+public class RenderView
+	extends Packable
+{
+	private static boolean DEBUGGING=false;
+	private Double[] m_Eye;
+	private Double[] m_LookAt;
+	private Double m_Theta;
+	private Double m_Phi;
+	private Integer m_NavMode;	/* 0: camera, 1: world */
+	
+	public Double[] getEye() { return m_Eye; }
+	public Double[] getLookAt() { return m_LookAt; }
+	public Double getTheta() { return m_Theta; }
+	public Double getPhi() { return m_Phi; }
+	public Integer getNavMode() { return m_NavMode; }
+	
+	public boolean equals(Object other)
+	{
+		if(other == this)
+			return true;
+		
+		if(!(other instanceof RenderView))
+			return false;
+		
+		RenderView r = (RenderView) other;
+		if(r.m_Eye == null || r.m_LookAt == null || r.m_Eye.length!=3 || r.m_LookAt.length!=3)
+			return false;
+		return Double.compare(m_Theta, r.m_Theta) == 0 &&
+			Double.compare(m_Phi, r.m_Phi) == 0 &&
+			Integer.compare(m_NavMode, r.m_NavMode) == 0 &&
+			r.m_Eye[0] != null && r.m_Eye[1] != null && r.m_Eye[2] != null &&
+			Double.compare(m_Eye[0], r.m_Eye[0]) == 0 &&
+			Double.compare(m_Eye[1], r.m_Eye[1]) == 0 &&
+			Double.compare(m_Eye[2], r.m_Eye[2]) == 0 &&
+			r.m_LookAt[0] != null && r.m_LookAt[1] != null && r.m_LookAt[2] != null &&
+			Double.compare(m_LookAt[0], r.m_LookAt[0]) == 0 &&
+			Double.compare(m_LookAt[1], r.m_LookAt[1]) == 0 &&
+			Double.compare(m_LookAt[2], r.m_LookAt[2]) == 0;
+			
+	}
+	
+	public void setEye( Double[] newValue )
+	{
+		if(DEBUGGING)
+			Trace.println("RenderView::setEye()");
+		
+		if(newValue != null && newValue.length == 3)
+			m_Eye = newValue;
+		else
+			Trace.println("|invalid newValue");
+	}
+	
+	public void setLookAt( Double[] newValue )
+	{
+		if(DEBUGGING)
+			Trace.println("RenderView::setLookAt()");
+		
+		if(newValue != null && newValue.length == 3)
+			m_LookAt = newValue;
+		else
+			Trace.println("|invalid newValue");
+	}
+	
+	public void setTheta( Double newValue ) { m_Theta = newValue; }
+	public void setPhi( Double newValue ) { m_Phi = newValue; }
+	public void setNavMode( Integer newValue ) { m_NavMode = newValue; }
+	
+	public RenderView() {}
+	public RenderView(
+		Double[] eye,
+		Double[] lookAt,
+		Double theta,
+		Double phi,
+		Integer navMode
+		)
+	{
+		if(DEBUGGING)
+			Trace.println("RenderView::RenderView()");
+		
+		m_Eye = eye;
+		m_LookAt = lookAt;
+		m_Theta = theta;
+		m_Phi = phi;
+		m_NavMode = navMode;
+	}
+
+	@Override
+	public Byte[] Pack()
+	{
+		StartPacking();
+		packDouble( getTheta() );
+		packDouble( getPhi() );
+		packInt( getNavMode() );
+		packDoubleArray( getEye() );
+		packDoubleArray (getLookAt() );
+		return DonePacking();
+	}
+
+	@Override
+	public int Unpack(Byte[] buf) throws Exception
+	{
+		StartUnpacking(buf);
+		setTheta( unpackDouble() );
+		setPhi( unpackDouble() );
+		setNavMode( unpackInt() );
+		setEye( unpackDoubleArray() );
+		setLookAt( unpackDoubleArray() );
+		return DoneUnpacking();
+	}
+
+}

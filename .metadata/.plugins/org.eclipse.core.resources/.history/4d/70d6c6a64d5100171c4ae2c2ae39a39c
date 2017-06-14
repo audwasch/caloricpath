@@ -1,0 +1,45 @@
+package com.caloricpath.shared;
+
+public class AppGlobal
+{
+
+	public static final String SERVER_SATELLITE_PATH = "/satellite/" ; /* include last slash */
+	public static final String SERVER_DOWNLOAD_FILE = "/satellite/PathDownload.gpx" ;
+	
+	
+	public static final String TEXTURE_TOP_FILE = "images/textures/top.nocache.bmp";
+	public static final String TEXTURE_BOT_FILE = "images/textures/bottom.nocache.bmp";
+	
+	public static final String MAP_2D_FILE = "images/map2d.nocache.bmp";
+	
+	public static final double METERS_PER_LAT = 110586.868647;
+	public static final double METERS_PER_LON = 110690.469;
+	public static final double METERS_PER_DEGREE = (METERS_PER_LAT + METERS_PER_LON) / 2.0;
+	
+    private static final double R = 6372.8 * 1000.0 ; // In meters
+    
+    public static double CalculateDistance2DMeters(
+    		double lat1, double lon1, 
+    		double lat2, double lon2
+    		) 
+    {
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        lat1 = Math.toRadians(lat1);
+        lat2 = Math.toRadians(lat2);
+ 
+        double a = Math.pow(Math.sin(dLat / 2),2) + Math.pow(Math.sin(dLon / 2),2) * Math.cos(lat1) * Math.cos(lat2);
+        double c = 2 * Math.asin(Math.sqrt(a));
+        return R * c;
+    }
+    
+    public static double CalculateDistance3DMeters(
+    		double lat1, double lon1, double elev1,
+    		double lat2, double lon2, double elev2
+    		) 
+    {
+    	double elevGain=elev2-elev1;
+    	double twoD = CalculateDistance2DMeters(lat1,lon1,lat2,lon2);
+    	return Math.sqrt( twoD*twoD + elevGain*elevGain );
+    }
+}

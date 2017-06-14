@@ -1,0 +1,189 @@
+package com.caloricpath.client;
+
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.SplitString;
+import com.rpc.shared.Trace;
+import com.caloricpath.shared.SatFileClass;
+import com.caloricpath.shared.SatFileStatus;
+
+public class SatFileClient 
+	extends SatFileClass 
+{
+	private static final boolean DEBUGGING=false;
+	
+	public SatFileClient(String name)
+	{
+		super(name);
+		
+		if(DEBUGGING)
+			Trace.println("SatFileClient::SatFileClient(), name="+name);
+		
+		FileName.ChangedEvent.add(FileName_Changed);
+		FileIndex.ChangedEvent.add(FileIndex_Changed);
+		
+		FileStatus.ChangedEvent.add(FileStatus_Changed);
+		
+//		FileSamples.ChangedEvent.add(FileSamples_Changed);
+//		FileLines.ChangedEvent.add(FileLines_Changed);
+//		FilePoints.ChangedEvent.add(FilePoints_Changed);
+//		FileCenter.ChangedEvent.add(FileCenter_Changed);
+//		FileDegrees.ChangedEvent.add(FileDegrees_Changed);
+//		FileMiles.ChangedEvent.add(FileMiles_Changed);
+//		FileNSEWDegrees.ChangedEvent.add(FileNSEWDegrees_Changed);
+		
+		FocusCenter.ChangedEvent.add(FocusCenter_Changed);
+		FocusDegrees.ChangedEvent.add(FocusDegrees_Changed);
+		FocusMiles.ChangedEvent.add(FocusMiles_Changed);
+		FocusTopLeftColRow.ChangedEvent.add(FocusTopLeftColRow_Changed);
+		FocusWidthHeightColRow.ChangedEvent.add(FocusWidthHeightColRow_Changed);
+		Data.ChangedEvent.add(Data_Changed);
+		DataMaxCount.ChangedEvent.add(DataMaxCount_Changed);
+		DataDimensions.ChangedEvent.add(DataDimensions_Changed);
+	}
+
+	private HandleChanged<SatFileStatus> FileStatus_Changed =
+			new HandleChanged<SatFileStatus>() 
+	{
+		@Override
+		public void Changed(SatFileStatus newValue) throws Exception
+		{	
+			if(DEBUGGING)
+				Trace.println("SatFileClient::FileStatus_Changed=" + newValue.toString() );
+		}
+	};
+	
+	private HandleChanged<String> FileName_Changed = 
+			new HandleChanged<String>()
+	{
+		@Override
+		public void Changed(String newValue) throws Exception
+		{
+			if(newValue==null) newValue="";
+			if(DEBUGGING)
+				Trace.println("SatFileClient::FileName_Changed="+newValue);
+		}
+	};
+	
+	private HandleChanged<Double[]> FocusCenter_Changed = 
+			new HandleChanged<Double[]>()
+	{
+		@Override
+		public void Changed(Double[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+			{
+				String str=SplitString.formArrayValue(newValue);
+				Trace.println("SatFileClient::FocusCenter_Changed="+str);
+			}
+		}
+	};
+	
+	private HandleChanged<Double[]> FocusDegrees_Changed = 
+			new HandleChanged<Double[]>()
+	{
+		@Override
+		public void Changed(Double[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+			{
+				String str=SplitString.formArrayValue(newValue);
+				Trace.println("SatFileClient::FocusDegrees_Changed="+str);
+			}
+		}
+	};
+	
+	private HandleChanged<Double[]> FocusMiles_Changed = 
+			new HandleChanged<Double[]>()
+	{
+		@Override
+		public void Changed(Double[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+			{
+				String str=SplitString.formArrayValue(newValue);
+				Trace.println("SatFileClient::FocusMiles_Changed="+str);
+			}
+		}
+	};
+	
+	private HandleChanged<Integer[]> FocusTopLeftColRow_Changed =
+			new HandleChanged<Integer[]>()
+	{
+		@Override
+		public void Changed(Integer[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+			{
+				String str=SplitString.formArrayValue(newValue);
+				Trace.println("SatFileClient::FocusTopLeftColRow_Changed="+str);
+			}
+		}
+	};
+	
+	private HandleChanged<Integer[]> FocusWidthHeightColRow_Changed =
+			new HandleChanged<Integer[]>()
+	{
+		@Override
+		public void Changed(Integer[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+			{
+				String str=SplitString.formArrayValue(newValue);
+				Trace.println("SatFileClient::FocusWidthHeightColRow_Changed="+str);
+			}
+		}
+	};
+	
+	private HandleChanged<Integer> DataMaxCount_Changed = 
+			new HandleChanged<Integer>()
+	{
+		@Override
+		public void Changed(Integer newValue) throws Exception
+		{
+			if(newValue==null)
+				newValue=0;
+			if(DEBUGGING)
+				Trace.println("SatFileClient::DataMaxCount_Changed="+newValue);
+		}
+	};
+	
+	private HandleChanged<Integer> FileIndex_Changed =
+			new HandleChanged<Integer>()
+	{
+		@Override
+		public void Changed(Integer newValue) throws Exception
+		{
+			if(newValue==null)
+				newValue = -1;
+			if(DEBUGGING)
+				Trace.println("SatFileClient::FileIndex_Changed(), newValue="+newValue);
+		}
+	};
+	
+	private HandleChanged<Integer[]> DataDimensions_Changed = 
+			new HandleChanged<Integer[]>()
+	{
+		@Override
+		public void Changed(Integer[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+			{
+				String str=SplitString.formArrayValue(newValue);
+				Trace.println("SatFileClient::DataDimensions_Changed="+str);
+			}
+		}
+	};
+	
+	private HandleChanged<Float[]> Data_Changed = 
+			new HandleChanged<Float[]>()
+	{
+		@Override
+		public void Changed(Float[] newValue) throws Exception
+		{
+			if(newValue==null) newValue=new Float[0];
+	
+			if(DEBUGGING)
+				Trace.println("SatFileClient::Data_Changed, Items="+newValue.length);
+		}
+	};
+}

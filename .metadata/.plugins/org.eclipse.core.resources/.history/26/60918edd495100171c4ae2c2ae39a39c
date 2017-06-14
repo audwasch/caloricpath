@@ -1,0 +1,16 @@
+package com.caloricpath.client;
+
+public class HitObject
+{
+	private boolean m_Hit;
+	private int m_Index;
+	
+	public HitObject(boolean hit, int index)
+	{
+		m_Hit = hit;
+		m_Index = index;
+	}
+	
+	public boolean getHit() { return m_Hit; }
+	public int getIndex() { return m_Index; }
+}

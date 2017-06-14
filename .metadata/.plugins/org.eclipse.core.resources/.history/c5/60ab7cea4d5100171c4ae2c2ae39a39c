@@ -1,0 +1,57 @@
+package com.caloricpath.shared;
+
+import com.rpc.shared.RpcClass;
+import com.rpc.shared.RpcPropertyArrayDouble;
+import com.rpc.shared.RpcPropertyArrayInteger;
+import com.rpc.shared.RpcPropertyInteger;
+
+public class MapClass
+	extends RpcClass
+{
+	/* (pixels of high res image) 0: width 1: height */
+	public RpcPropertyArrayInteger OrigSize = new RpcPropertyArrayInteger("Width",new Integer[] {0,0},READWRITE+SAVERESTORE);
+	
+	// condense these 4 into one array below for synchronized values:
+	// 0: left longitude
+	// 1: top latitude
+	// 2: width longitude
+	// 3: height latitude
+	public RpcPropertyArrayDouble ViewArea = new RpcPropertyArrayDouble("ViewArea",new Double[] {0.0, 0.0, 0.0, 0.0},READWRITE+SAVERESTORE);
+	//NO LONGER SENDING PIXEL DATA (below)
+	//public RpcPropertyArrayInteger Data = new RpcPropertyArrayInteger("Data",null,READONLY);
+	/* (pixels of client canvas) 0: width 1: height */
+	public RpcPropertyArrayInteger ClientSize = new RpcPropertyArrayInteger("ClientSize",new Integer[] {359, 578},READWRITE+SAVERESTORE);
+	public RpcPropertyInteger Mode = new RpcPropertyInteger("Mode",0,READWRITE+SAVERESTORE); /* 0: pan 1: select render area 2: draw poly line 3: draw polygon*/
+	public RpcPropertyArrayDouble RectangleData = new RpcPropertyArrayDouble("RectangleData",new Double[] {0.0, 0.0, 0.0, 0.0},READWRITE+SAVERESTORE); /*left, top, right, bottom*/
+	public RpcPropertyInteger SequenceNumber = new RpcPropertyInteger("SequenceNumber", 0, READONLY);
+	
+	public MapClass( String name )
+	{
+		super(name);
+	}
+
+	@Override
+	public void AttachMembers()
+	{
+		AttachMember( OrigSize );
+		AttachMember( ViewArea );
+		//AttachMember( Data );
+		AttachMember( ClientSize );
+		AttachMember( Mode );
+		AttachMember( RectangleData );
+		AttachMember( SequenceNumber );
+	}
+
+	@Override
+	public void DetachMembers()
+	{
+		DetachMember( OrigSize );
+		DetachMember( ViewArea );
+		//DetachMember( Data );
+		DetachMember( ClientSize );
+		DetachMember( Mode );
+		DetachMember( RectangleData );
+		DetachMember( SequenceNumber );
+	}
+
+}

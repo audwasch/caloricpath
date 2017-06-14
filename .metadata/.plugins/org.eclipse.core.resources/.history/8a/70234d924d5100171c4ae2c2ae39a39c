@@ -1,0 +1,232 @@
+package com.caloricpath.server;
+
+import java.util.HashMap;
+import java.util.Iterator;
+
+import com.rpc.shared.Trace;
+
+public class PathProcessor
+{
+	private boolean DEBUGGING = false;
+	
+	private HashMap<Integer, PathComputation> m_WorkingList;
+	
+	public HashMap<Integer, PathComputation> getWorkingList() { return m_WorkingList; }
+	
+	private void Lock() { ImageServiceImpl.Lock(); }
+	private void Unlock() { ImageServiceImpl.Unlock(); }
+	
+	public PathProcessor()
+	{
+		if(DEBUGGING)
+			Trace.println("PathProcessor::PathProcessor()");
+		
+		m_WorkingList = new HashMap<Integer, PathComputation>();
+	}
+	
+//	private void printList()
+//	{
+//		Trace.println("printList()");
+//		for(Integer key: m_WorkingList.keySet())
+//			Trace.println("key="+key);
+//		Trace.println("end of printList()");
+//	}
+	
+	public void OnNewData(PathConfigServer[] newData)
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println("PathProcessor::OnNewData(), n=" + newData.length);
+			
+			for(int i = 0; i < newData.length; i++)
+			{
+				PathConfigServer conf = newData[i];
+				if(m_WorkingList.containsKey(conf.getId()))
+				{
+					if(DEBUGGING)
+						Trace.println("existing PathComputation for id: "+conf.getId());
+					
+					PathComputation temp = m_WorkingList.get( conf.getId() );
+					
+					if(temp.getStartLat() != conf.getStart()[0] ||
+						temp.getStartLon() != conf.getStart()[1] ||
+						temp.getEndLat() != conf.getEnd()[0] ||
+						temp.getEndLon() != conf.getEnd()[1] ||
+						temp.getAlgorithm() != conf.getAlgorithm())
+					{
+						if(DEBUGGING)
+							Trace.println("new start/end/algorithm, must restart computation");
+						
+						/* there is a change, must edit list entry & restart computation */
+						temp.cancel();
+						m_WorkingList.remove(temp);
+						
+						/* reset length, data, and weight sum if already set */
+						if( ImageServiceImpl.getPathResults().LookupById(conf.getId()) != null )
+						{
+							ImageServiceImpl.getPathResults().LookupById(conf.getId()).setData(new Float[] {});
+							ImageServiceImpl.getPathResults().LookupById(conf.getId()).setLength(0.0);
+							ImageServiceImpl.getPathResults().LookupById(conf.getId()).setWeight(0.0);
+							ImageServiceImpl.getPathResults().AnnounceChanges();
+						}
+	
+						temp = new PathComputation(
+							ImageServiceImpl.getPathResults(),
+							ImageServiceImpl.getPathStatus(),
+							ImageServiceImpl.getSat(),
+							conf.getId(),
+							conf.getStart()[0],
+							conf.getStart()[1],
+							conf.getEnd()[0],
+							conf.getEnd()[1],
+							conf.getAlgorithm().intValue()
+							);
+						
+						m_WorkingList.put(conf.getId(), temp);
+						temp.start();
+					}
+					else if( conf.getColor() != ImageServiceImpl.getPathResults().LookupById(conf.getId()).getColor() )
+					{
+						if(DEBUGGING)
+							Trace.println("just new color");
+						try
+						{
+							ImageServiceImpl.getPathResults().LookupById(conf.getId()).setColor(conf.getColor());
+							ImageServiceImpl.getPathResults().AnnounceChanges();
+						}
+						catch(Exception e)
+						{
+							Trace.println("PathProcessor::setting just color change failed, e="+e.getMessage());
+						}
+					}
+//					else if( (temp.getIsRunning() == false) &&
+//						(ImageServiceImpl.getPathResults().LookupById(conf.getId()).getData() != null) &&
+//						(ImageServiceImpl.getPathResults().LookupById(conf.getId()).getPoints() > 0)
+//						)
+//					{
+//						if(DEBUGGING || true)
+//							Trace.println("isn't running and there is good data, cancel");
+//						Cancel(conf.getId()); //Cancel method removes from WorkingList
+//					}
+					/* else: there is no change, skip over this entry */
+				}
+				else
+				{
+					if(DEBUGGING)
+						Trace.println("new data, adding value and beginning");
+					/* add this entry to the list & begin computation */
+	
+					PathComputation add = new PathComputation(
+						ImageServiceImpl.getPathResults(),
+						ImageServiceImpl.getPathStatus(),
+						ImageServiceImpl.getSat(),
+						conf.getId(),
+						conf.getStart()[0],
+						conf.getStart()[1],
+						conf.getEnd()[0],
+						conf.getEnd()[1],
+						conf.getAlgorithm().intValue()
+						);
+					
+					m_WorkingList.put(conf.getId(), add);
+				//	Trace.println("adding id="+conf.getId());
+					add.start();
+				}
+			}
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	public void CancelAll()
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println("PathProcessor::CancelAll()");
+			
+			Iterator<PathComputation> it = m_WorkingList.values().iterator();
+			while(it.hasNext())
+			{
+				it.next().cancel();
+				it.remove();
+			}
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	public void RestartAll()
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println("PathProcessor::RestartAll()");
+			
+			//first cancel & reset, then run
+			Iterator<PathComputation> it = m_WorkingList.values().iterator();
+			while(it.hasNext())
+			{
+				int id = it.next().getId();
+				m_WorkingList.get(id).cancel();
+				
+				if( ImageServiceImpl.getPathResults().LookupById(id) != null )
+				{
+					if(DEBUGGING)
+						Trace.println("resetting length and data for id="+id);
+					ImageServiceImpl.getPathResults().LookupById(id).setData(new Float[] {});
+					ImageServiceImpl.getPathResults().LookupById(id).setLength(0.0);
+					ImageServiceImpl.getPathResults().LookupById(id).setWeight(0.0);
+					ImageServiceImpl.getPathResults().AnnounceChanges();
+				}
+				
+				it.remove();
+			}
+			OnNewData(ImageServiceImpl.getPathConfigs().List.getValue());
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	public void Cancel(int id)
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println("PathProcessor::Cancel, id="+id);
+			
+			PathComputation remove = m_WorkingList.remove(id);
+			remove.cancel();
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	public void SaveAsGPX(int id, String fname )
+	{
+		if(DEBUGGING)
+			Trace.println("PathProcessor::SaveAsGPX(), id="+id);
+		
+		if(m_WorkingList.containsKey(id) && m_WorkingList.get(id).getIsRunning() == false) /* has computed and is no longer running, but could have been stopped */
+		{
+			PathResultServer temp = ImageServiceImpl.getPathResults().LookupById(id); /* should be a real entry, but could be null if deleted */
+			if(temp != null && temp.getData() != null && temp.getPoints() > 1) /* must now check for data more than start and stop */
+			{
+				m_WorkingList.get(id).WritePathFile(temp.getData(), fname);
+			}
+		}
+	}
+}

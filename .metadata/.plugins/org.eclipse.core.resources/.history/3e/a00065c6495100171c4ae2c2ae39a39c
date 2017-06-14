@@ -1,0 +1,441 @@
+package com.caloricpath.client;
+
+import com.caloricpath.shared.utility.Util;
+import com.google.gwt.event.dom.client.ChangeEvent;
+import com.google.gwt.event.dom.client.ChangeHandler;
+import com.google.gwt.event.dom.client.ClickEvent;
+import com.google.gwt.event.dom.client.ClickHandler;
+import com.google.gwt.event.logical.shared.ValueChangeEvent;
+import com.google.gwt.event.logical.shared.ValueChangeHandler;
+import com.google.gwt.user.client.Window;
+import com.google.gwt.user.client.ui.Button;
+import com.google.gwt.user.client.ui.HasHorizontalAlignment;
+import com.google.gwt.user.client.ui.HorizontalPanel;
+import com.google.gwt.user.client.ui.Label;
+import com.google.gwt.user.client.ui.ListBox;
+import com.google.gwt.user.client.ui.PopupPanel;
+import com.google.gwt.user.client.ui.TextBox;
+import com.google.gwt.user.client.ui.VerticalPanel;
+import com.rpc.shared.Trace;
+
+public class ConfigDialog 
+{
+	private static boolean DEBUGGING=false;
+	
+	private PopupPanel m_PopupPanel;
+	
+	private String m_Name;
+	private int m_Id;
+	private double m_StartLon;
+	private double m_StartLat;
+	private double m_EndLon;
+	private double m_EndLat;
+	private int m_Color;
+	private int m_Algorithm;
+	
+	private boolean m_OpenForAdd;
+	private boolean m_DisableAlerts;
+	
+	private Label m_Label;
+	private String m_Title;
+	private Button m_OkayButton;
+	private Button m_CancelButton;
+	private VerticalPanel m_Layout;
+	private HorizontalPanel m_ButtonsPanel;
+	
+	private HorizontalPanel m_NamePanel;
+	private TextBox m_NameLabel;
+	private TextBox m_NameEntry;
+	
+	private HorizontalPanel m_StartLatPanel;
+	private TextBox m_StartLatLabel;
+	private TextBox m_StartLatEntry;
+	
+	private HorizontalPanel m_StartLonPanel;
+	private TextBox m_StartLonLabel;
+	private TextBox m_StartLonEntry;
+	
+	private HorizontalPanel m_EndLatPanel;
+	private TextBox m_EndLatLabel;
+	private TextBox m_EndLatEntry;
+	
+	private HorizontalPanel m_EndLonPanel;
+	private TextBox m_EndLonLabel;
+	private TextBox m_EndLonEntry;
+	
+	private HorizontalPanel m_ColorPanel;
+	private TextBox m_ColorLabel;
+	private ListBox m_ColorList;
+	
+	private HorizontalPanel m_AlgorithmPanel;
+	private TextBox m_AlgorithmLabel;
+	private ListBox m_AlgorithmList;
+	
+	public void setDisableAlerts(boolean newValue) { m_DisableAlerts = newValue; }
+	public boolean getDisableAlerts() { return m_DisableAlerts; }
+	
+	public void setId( int newValue )
+	{
+		if(newValue<=0 )
+			Window.alert("Invalid id");
+		else
+			m_Id = newValue;
+	}
+	
+	public void setName( String newValue )
+	{
+		if(newValue == null || newValue.contentEquals(""))
+			Window.alert("Invalid label");
+		else
+			m_Name = newValue;
+	}
+	public String getName() { return m_Name; }
+	public int getId() { return m_Id;}
+	
+	public double getStartLon() { return m_StartLon; }
+	public void setStartLon( double newValue )
+	{
+		if( !getDisableAlerts() && (newValue > CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[2]
+			|| newValue < CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[3]) )
+			Window.alert(
+				"Valid longitude values are within " +
+			CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[3] +
+			" and " + CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[2]);
+		else
+			m_StartLon = newValue;
+	}
+	
+	public double getStartLat() { return m_StartLat; }
+	public void setStartLat( double newValue )
+	{
+		if( !getDisableAlerts() && (newValue > CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[0]
+			|| newValue < CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[1]) )
+			Window.alert(
+				"Valid latitude values are within " +
+			CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[0] +
+			" and " + CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[1]);
+		else
+			m_StartLat = newValue;
+	}
+	
+	public double getEndLon() { return m_EndLon; }
+	public void setEndLon( double newValue )
+	{
+		if( !getDisableAlerts() && (newValue > CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[2]
+			|| newValue < CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[3]) )
+			Window.alert(
+				"Valid longitude values are within " +
+			CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[3] +
+			" and " + CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[2]);
+		else
+			m_EndLon = newValue;
+	}
+	
+	public double getEndLat() { return m_EndLat; }
+	public void setEndLat( double newValue )
+	{
+		if( !getDisableAlerts() && (newValue > CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[0]
+			|| newValue < CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[1]) )
+			Window.alert(
+				"Valid latitude values are within " +
+			CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[0] +
+			" and " + CaloricPath.getSat().FileStatus.getValue().getNSEWDegrees()[1]);
+		else
+			m_EndLat = newValue;
+	}
+	
+	public int getColor() { return m_Color; }
+	public void setColor( int newValue ) { m_Color = newValue; }
+	
+	public int getAlgorithm() { return m_Algorithm; }
+	public void setAlgorithm( int newValue ) { m_Algorithm = newValue; }
+	
+	public void setTitle( String newValue ) { m_Title = newValue; }
+	
+	public ConfigDialog()
+	{
+		if(DEBUGGING)
+			Trace.println("ConfigDialog::ConfigDialog()");
+		
+		m_PopupPanel = new PopupPanel(false);
+		m_Label = new Label();
+		m_PopupPanel.setGlassEnabled(true);
+		buildLayout();
+	}
+	
+	private void buildLayout()
+	{
+		m_Layout = new VerticalPanel();
+		
+		m_ButtonsPanel = new HorizontalPanel();
+		m_OkayButton = new Button("Okay");
+		m_OkayButton.addClickHandler(Okay_Click);
+		m_CancelButton = new Button("Cancel");
+		m_CancelButton.addClickHandler(Cancel_Click);
+		m_ButtonsPanel.add(m_OkayButton);
+		m_ButtonsPanel.add(m_CancelButton);
+		
+		m_NamePanel = new HorizontalPanel();
+		m_NameLabel = new TextBox();
+		m_NameEntry = new TextBox();
+		m_NameLabel.setReadOnly(true);
+		m_NameLabel.setText("Label");
+		m_NameLabel.setWidth("100px");
+		m_NameLabel.setEnabled(false);
+		m_NameEntry.addValueChangeHandler(NameEntryChangeHandler);
+		m_NamePanel.add(m_NameLabel);
+		m_NamePanel.add(m_NameEntry);
+		
+		m_StartLatPanel = new HorizontalPanel();
+		m_StartLatLabel = new TextBox();
+		m_StartLatEntry = new TextBox();
+		m_StartLatLabel.setReadOnly(true);
+		m_StartLatLabel.setText("Start Latitude");
+		m_StartLatLabel.setWidth("100px");
+		m_StartLatLabel.setEnabled(false);
+		m_StartLatEntry.addValueChangeHandler(StartLatEntryChangeHandler);
+		m_StartLatPanel.add(m_StartLatLabel);
+		m_StartLatPanel.add(m_StartLatEntry);
+		
+		m_StartLonPanel = new HorizontalPanel();
+		m_StartLonLabel = new TextBox();
+		m_StartLonEntry = new TextBox();
+		m_StartLonLabel.setReadOnly(true);
+		m_StartLonLabel.setText("Start Longitude");
+		m_StartLonLabel.setWidth("100px");
+		m_StartLonLabel.setEnabled(false);
+		m_StartLonEntry.addValueChangeHandler(StartLonEntryChangeHandler);
+		m_StartLonPanel.add(m_StartLonLabel);
+		m_StartLonPanel.add(m_StartLonEntry);
+		
+		m_EndLatPanel = new HorizontalPanel();
+		m_EndLatLabel = new TextBox();
+		m_EndLatEntry = new TextBox();
+		m_EndLatLabel.setReadOnly(true);
+		m_EndLatLabel.setText("End Latitude");
+		m_EndLatLabel.setWidth("100px");
+		m_EndLatLabel.setEnabled(false);
+		m_EndLatEntry.addValueChangeHandler(EndLatEntryChangeHandler);
+		m_EndLatPanel.add(m_EndLatLabel);
+		m_EndLatPanel.add(m_EndLatEntry);
+		
+		m_EndLonPanel = new HorizontalPanel();
+		m_EndLonLabel = new TextBox();
+		m_EndLonEntry = new TextBox();
+		m_EndLonLabel.setReadOnly(true);
+		m_EndLonLabel.setText("End Longitude");
+		m_EndLonLabel.setWidth("100px");
+		m_EndLonLabel.setEnabled(false);
+		m_EndLonEntry.addValueChangeHandler(EndLonEntryChangeHandler);
+		m_EndLonPanel.add(m_EndLonLabel);
+		m_EndLonPanel.add(m_EndLonEntry);
+		
+		m_ColorPanel = new HorizontalPanel();
+		m_ColorLabel = new TextBox();
+		m_ColorList = new ListBox();
+		m_ColorLabel.setReadOnly(true);
+		m_ColorLabel.setText("Color");
+		m_ColorLabel.setWidth("100px");
+		m_ColorLabel.setEnabled(false);
+		for(int i = 0; i < Util.NUM_COLORS; i++)
+			m_ColorList.addItem(Util.ColorStrings[i]);
+		m_ColorList.setVisibleItemCount(1); // make it a drop-down list
+		m_ColorList.setWidth("186px");
+		m_ColorList.setHeight("30px");
+		m_ColorList.addChangeHandler(ColorListChangeHandler);
+		m_ColorPanel.add(m_ColorLabel);
+		m_ColorPanel.add(m_ColorList);
+		
+		m_AlgorithmPanel = new HorizontalPanel();
+		m_AlgorithmLabel = new TextBox();
+		m_AlgorithmList = new ListBox();
+		m_AlgorithmLabel.setReadOnly(true);
+		m_AlgorithmLabel.setText("Algorithm");
+		m_AlgorithmLabel.setWidth("100px");
+		m_AlgorithmLabel.setEnabled(false);
+		for(int i = 0; i < Util.NUM_ALGS; i++)
+			m_AlgorithmList.addItem(Util.AlgorithmStrings[i]);
+		m_AlgorithmList.setVisibleItemCount(1);
+		m_AlgorithmList.setWidth("186px");
+		m_AlgorithmList.setHeight("30px");
+		m_AlgorithmList.addChangeHandler(AlgorithmListChangeHandler);
+		m_AlgorithmPanel.add(m_AlgorithmLabel);
+		m_AlgorithmPanel.add(m_AlgorithmList);
+		
+		m_Layout.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_CENTER);
+		m_Layout.add(m_Label);
+		m_Layout.add(m_NamePanel);
+		m_Layout.add(m_StartLatPanel);
+		m_Layout.add(m_StartLonPanel);
+		m_Layout.add(m_EndLatPanel);
+		m_Layout.add(m_EndLonPanel);
+		m_Layout.add(m_ColorPanel);
+		m_Layout.add(m_AlgorithmPanel);
+		m_Layout.add(m_ButtonsPanel);
+		
+		m_PopupPanel.add(m_Layout);
+	}
+	
+	private ChangeHandler ColorListChangeHandler = new ChangeHandler()
+	{
+		@Override
+		public void onChange(ChangeEvent event)
+		{
+			setColor(m_ColorList.getSelectedIndex());
+		}
+	};
+	
+	private ChangeHandler AlgorithmListChangeHandler = new ChangeHandler()
+	{
+		@Override
+		public void onChange(ChangeEvent event)
+		{
+			setAlgorithm(m_AlgorithmList.getSelectedIndex());
+		}
+	};
+	
+	private ValueChangeHandler<String> EndLonEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			setEndLon(Double.parseDouble(event.getValue()));
+		}
+	};
+	
+	
+	private ValueChangeHandler<String> EndLatEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			setEndLat(Double.parseDouble(event.getValue()));
+		}
+	};
+	
+	private ValueChangeHandler<String> StartLonEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			setStartLon(Double.parseDouble(event.getValue()));
+		}
+	};
+
+	private ValueChangeHandler<String> StartLatEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			setStartLat(Double.parseDouble(event.getValue()));
+		}
+	};
+	
+	private ValueChangeHandler<String> NameEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			if(DEBUGGING)
+				Trace.println("new name:"+event.getValue());
+			setName(event.getValue());
+		}
+	};
+	
+	
+	public void OpenForAdd()
+	{
+		if(DEBUGGING)
+			Trace.println("ConfigDialog::OpenForAdd()");
+		
+		m_OpenForAdd=true;
+		m_Title = "Add Path";
+		createPanel();
+	}
+	
+	public void OpenForEdit()
+	{
+		if(DEBUGGING)
+			Trace.println("ConfigDialog::OpenForEdit()");
+		
+		m_OpenForAdd=false;
+		m_Title = "Edit Path";
+		createPanel();
+	}
+	
+	private void createPanel()
+	{
+		if(DEBUGGING)
+			Trace.println("ConfigDialog::createPanel()");
+		
+		m_Label.setText(m_Title);
+		
+		m_NameEntry.setText(getName());
+		
+		m_StartLatEntry.setText(String.valueOf(getStartLat()));
+		m_StartLonEntry.setText(String.valueOf(getStartLon()));
+		m_EndLatEntry.setText(String.valueOf(getEndLat()));
+		m_EndLonEntry.setText(String.valueOf(getEndLon()));
+		m_ColorList.setSelectedIndex(getColor());
+		m_AlgorithmList.setSelectedIndex(getAlgorithm());
+
+		m_PopupPanel.center();
+		m_PopupPanel.show();
+	}
+
+	ClickHandler Okay_Click = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			m_PopupPanel.hide();
+			
+			if( m_OpenForAdd)
+			{
+				try
+				{
+					CaloricPath.getPathConfigList().AddSingle(
+						new PathConfigClient(
+							CaloricPath.getPathConfigList().getUniqueId(),
+							new Double[] {getStartLat(), getStartLon()},
+							new Double[] {getEndLat(), getEndLon()},
+							getName(),
+							getColor(),
+							getAlgorithm()
+							));
+				}
+				catch(Exception e)
+				{
+					Trace.println("ConfigDialog::Okay_Click AddSingle failed, e="+e.getMessage());
+				}
+			}
+			else
+			{
+				try
+				{
+					PathConfigClient edit = CaloricPath.getPathConfigList().LookupById(getId());
+					edit.setName(getName());
+					edit.setStart(new Double[] {getStartLat(), getStartLon()});
+					edit.setEnd(new Double[] {getEndLat(), getEndLon()});
+					edit.setColor(getColor());
+					edit.setAlgorithm(getAlgorithm());
+					CaloricPath.getPathConfigList().AnnounceChanges();
+				}
+				catch(Exception e)
+				{
+					Trace.println("ConfigDialog::Okay_Click edit failed, e="+e.getMessage());
+				}
+			}
+		}
+	} ;
+	
+	
+	ClickHandler Cancel_Click = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			m_PopupPanel.hide();
+		}
+	};	
+}

@@ -1,0 +1,237 @@
+// ============================================================== //
+//                                                                //
+// BITWISE LABORATORIES INCORPORATED CONFIDENTIAL                 //
+// COPYRIGHT 2013 - 2016 BITWISE LABORATORIES INC.                //
+// ALL RIGHTS RESERVED                                            //
+//                                                                //
+// NOTICE:  All information contained herein is, and remains      //
+// the property of BitWise Laboratories Incorporated. The         //
+// intellectual and technical concepts contained herein are       //
+// proprietary to BitWise Laboratories Incorporated and may be    //
+// covered by U.S. and Foreign Patents, patents in process, and   //
+// are protected by trade secret or copyright law.  Dissemination //
+// of this information or reproduction of this material by any    //
+// means is strictly forbidden unless prior written permission    //
+// is obtained from BitWise Laboratories Incorporated.            //
+//                                                                //
+// ============================================================== //
+
+
+package com.caloricpath.server;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.net.URLDecoder;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import com.rpc.shared.Trace;
+
+public class DownloadImpl extends HttpServlet 
+{
+    private static final long serialVersionUID = 1L;
+    private static final boolean DEBUGGING = false;
+    
+    @Override
+    public void init() throws ServletException
+    {
+    	super.init();
+    	if(DEBUGGING)
+    		Trace.println("DownloadImpl::init(), Entered");
+    }
+    
+    @Override
+    public void destroy()
+    {
+    	super.destroy();
+    	if(DEBUGGING)
+    		Trace.println("DownloadImpl::destroy(), Entered");
+    }
+
+//    public boolean isRunningSimulation()
+//    {
+//		ServletConfig config = getServletConfig();
+//		ServletContext context = config.getServletContext();
+//		return context.getServerInfo().contains("jetty");
+//    }
+	
+    public void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException 
+    {
+      	final String NEWLINE = System.getProperty("line.separator");
+      	
+      	if(DEBUGGING)
+    		Trace.println("Download::doGet(), Entered");
+    	
+	    String filePath = URLDecoder.decode(req.getParameter("filePath"),"UTF-8");
+	    String fileType = URLDecoder.decode(req.getParameter("fileType"),"UTF-8");
+	    String fileName = URLDecoder.decode(req.getParameter("fileName"),"UTF-8");
+	     
+	    if(DEBUGGING)
+	    {
+    		Trace.println("DownloadImpl::doGet(), filePath: " + filePath );
+    		Trace.println("DownloadImpl::doGet(), fileType: " + fileType );
+    		Trace.println("DownloadImpl::doGet(), fileName: " + fileName );
+	    }
+	    
+  	    	// no need to set Content Length.  If stays at zero
+	    	// then chunked encoding will be used, which is okay
+	    	//resp.setContentLength(n); 
+    	
+//    	if( isRunningSimulation() )
+//    	{
+//
+//    		if(DEBUGGING)
+//        		Trace.println("DownloadImpl::doGet(), Running Simulation mode");	
+//	      	
+//	    	resp.setContentType("text");
+//	      	resp.setHeader("Content-Disposition", "attachment; fileName=Download_Error_See_Contents.txt");
+//	      	
+//        	resp.getWriter().write("Error: Cannot download when server is in simulation mode"+NEWLINE);
+//        	resp.getWriter().write("filePath: " + filePath + NEWLINE );
+//        	resp.getWriter().write("fileType: " + fileType + NEWLINE );
+//        	resp.getWriter().write("fileName: " + fileName + NEWLINE );  
+//    	  
+//        	if(DEBUGGING)
+//        		Trace.println("Download::doGet(), Exit Fail");
+//        	
+//        	return;
+//    	}
+    	
+    	File f = null;
+    	FileInputStream is = null;
+    	
+    	try
+    	{    	
+	    	f = new File(filePath);
+	    	is = new FileInputStream(f);
+    	}
+    	catch(Exception e)
+    	{
+    		if(DEBUGGING)
+        		Trace.println("DownloadImpl::doGet(), Access exception: " + e.getMessage() );
+    		
+        	resp.setContentType("text");
+	      	resp.setHeader("Content-Disposition", "attachment; fileName=Download_Error_See_Contents.txt");
+	      	
+        	resp.getWriter().write("Error: Access exception encountered: "+e.getMessage()+NEWLINE);
+        	resp.getWriter().write("filePath: " + filePath + NEWLINE );
+        	resp.getWriter().write("fileType: " + fileType + NEWLINE );
+        	resp.getWriter().write("fileName: " + fileName + NEWLINE );        	
+        	
+    		try { if(is!=null) is.close(); } catch(Exception ignored) {}
+    		
+    		if(DEBUGGING)
+        		Trace.println("DownloadImpl::doGet(), Exit Fail");	
+        	return;
+    	}
+ 
+    	byte[] buffer = new byte[4096];
+    	int n ;
+    	boolean first=true;
+      	
+    	try
+    	{    	
+	    	while( (n=is.read(buffer))>0 )
+	    	{
+	    		if(first)
+	    		{
+	    	    	resp.setContentType(fileType);
+			     	resp.setHeader("Content-Disposition", "attachment; fileName=" + fileName);
+	    			first=false;
+	    		}
+	    		resp.getOutputStream().write(buffer,0,n);
+	    	}
+    	}
+    	catch(IOException e)
+    	{
+    		if(DEBUGGING)
+        		Trace.println("DownloadImpl::doGet(), Read exception: " + e.getMessage() );
+    				
+    		if(first)
+    		{
+	        	resp.setContentType("text");
+		      	resp.setHeader("Content-Disposition", "attachment; fileName=Download_Error_See_Contents.txt");
+		      	
+	        	resp.getWriter().write("Error: Read exception encountered: "+e.getMessage()+NEWLINE);
+	        	resp.getWriter().write("filePath: " + filePath + NEWLINE );
+	        	resp.getWriter().write("fileType: " + fileType + NEWLINE );
+	        	resp.getWriter().write("fileName: " + fileName + NEWLINE );  
+    		}
+    		else
+    		{
+    			resp.getOutputStream().flush();
+    			resp.getWriter().write("[Download error encountered: "+e.getMessage()+"]"+NEWLINE );
+    			resp.getWriter().flush();
+    		}
+    		
+    		//throw e;
+    		try { if(is!=null) is.close(); } catch(Exception ignored) {}
+    		if(DEBUGGING)
+        		Trace.println("DownloadImpl::doGet(), Exit Fail");	
+    	}
+
+    	try { if(is!=null) is.close(); } catch(Exception ignored) {}
+    	
+    	if(DEBUGGING)
+    		Trace.println("DownloadImpl::doGet(), Exit Success");
+    }
+    
+//    public void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException
+//    {
+//    	if(DEBUGGING)
+//	Trace.println("DownloadImpl::doPost(), Entered");
+//    	
+//    	//final String NEWLINE = System.getProperty("line.separator");
+//    	
+//	    String filePath = URLDecoder.decode(req.getParameter("filePath"),"UTF-8");
+//	    String fileType = URLDecoder.decode(req.getParameter("fileType"),"UTF-8");
+//	    String fileName = URLDecoder.decode(req.getParameter("fileName"),"UTF-8");
+//	     
+//	    if(DEBUGGING)
+ //   {
+//	Trace.println("DownloadImpl::doPost(), filePath: " + filePath );
+//	    Trace.println("DownloadImpl::doPost(), fileType: " + fileType );
+//	    Trace.println("DownloadImpl::doPost(), fileName: " + fileName );
+//    }
+//	    
+//    	resp.setContentType(fileType);
+//    	resp.setHeader("Content-Disposition", "attachment; fileName=" + fileName);
+//  	    	// no need to set Content Length.  If stays at zero
+//	    	// then chunked encoding will be used, which is okay
+//	    	//resp.setContentLength(n); 
+//    	
+//    	File f = null;
+//    	FileInputStream is = null;
+//    	final int BUFSIZE = 4096 ;
+//    	
+//    	try
+//    	{    	
+//	    	f = new File(filePath);
+//	    	is = new FileInputStream(f);
+//	    	
+//	    	byte[] buffer = new byte[BUFSIZE];
+//	    	int n ;
+//	    	
+//	    	while( (n=is.read(buffer))>0 )
+//	    		resp.getOutputStream().write(buffer,0,n);
+//    	}
+//    	catch(IOException e)
+//    	{
+//    		if(DEBUGGING)
+//	Trace.println("DownloadImpl::doPost(), Exception: " + e.getMessage() );
+//    		throw e;
+//    	}
+//    	finally
+//    	{
+//    		try { if(is!=null) is.close(); } catch(Exception e) {}
+//    	}
+//    	
+//    	if(DEBUGGING)
+//	Trace.println("DownloadImpl::doPost(), Exited");
+//    }
+}
+
+/* EOF */

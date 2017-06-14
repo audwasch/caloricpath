@@ -1,0 +1,59 @@
+package com.caloricpath.shared.utility;
+
+public class BitArray
+{
+	private long[] m_Array=null;
+	private int m_Size=0;
+	private int m_Count=0;
+	
+	public int size() { return m_Count; }
+	public int getMaximumSize() { return m_Size; }
+
+	public BitArray() {}
+
+	public void setMaximumSize( int newValue )
+	{
+		m_Size=newValue;
+		m_Count=0;
+		
+		int count = getMaximumSize() / Long.SIZE;
+		if( (getMaximumSize()%Long.SIZE)!=0 ) count++;
+		
+		m_Array = new long[ count ];
+		for( int n=0;n<m_Array.length;n++)
+			m_Array[n]=0L;
+	}
+	
+	public void clear()
+	{
+		m_Size=0;
+		m_Count=0;
+		m_Array=null;
+	}
+	
+	public void add( int bitIndex )
+	{
+		if( bitIndex<getMaximumSize() )
+		{
+			int word = bitIndex / Long.SIZE;
+			long bit = 1l << (bitIndex % Long.SIZE);
+			
+			if((m_Array[word] & bit) == 0 )
+			{
+				m_Count++;			
+				m_Array[word] |= bit;	
+			}
+		}
+	}
+	
+	public boolean contains( int bitIndex )
+	{
+		if( bitIndex>=getMaximumSize() )
+			return false;
+		
+		int word = bitIndex / Long.SIZE;
+		long bit = 1l << (bitIndex % Long.SIZE);
+		return  (m_Array[word] & bit) != 0 ;
+	}
+}
+

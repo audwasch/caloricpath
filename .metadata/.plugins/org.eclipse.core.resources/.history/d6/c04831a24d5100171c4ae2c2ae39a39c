@@ -1,0 +1,156 @@
+package com.caloricpath.shared;
+
+import com.rpc.shared.Packable;
+import com.rpc.shared.Trace;
+
+public class AlgorithmProperties
+	extends Packable
+{
+	private static boolean DEBUGGING=false;
+	
+	private double m_Weight;	/* weight of traveler in kilograms */
+	private double m_Load;		/* weight of load carried in kilograms */
+	private double m_Speed;		/* walking speed in meters per second */
+	private double m_N;			/* terrain factor (1.0 for a treadmill) */
+	private double m_Height;	/* height of traveler in centimeters */
+	private double m_Age;		/* age of traveler */
+	private int m_Type=4;		/* 0=2D, 1=3D*, 2=Caloric/HikingScience, 3=Caloric/AdirondackMag, 4=Caloric/Historical */
+	private boolean m_UseConstraints;
+	
+	public double getWeight() { return m_Weight; }
+	public double getLoad() { return m_Load; }
+	public double getSpeed() { return m_Speed; }
+	public double getN() { return m_N; }
+	public double getHeight() { return m_Height; }
+	public double getAge() { return m_Age; }
+	public int getType() { return m_Type; }
+	public boolean getUseConstraints() { return m_UseConstraints; }
+	
+	public void setWeight(double newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmProperties::setWeight(), newValue="+newValue);
+		
+		if(newValue > 0.0)
+			m_Weight = newValue;
+	}
+	
+	public void setLoad(double newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmProperties::setLoad(), newValue="+newValue);
+		
+		if(newValue > 0.0)
+			m_Load = newValue;
+	}
+	
+	public void setSpeed(double newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmProperties::setSpeed(), newValue="+newValue);
+		
+		m_Speed = newValue;
+	}
+	
+	public void setN(double newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmProperties::setN(), newValue="+newValue);
+		
+		m_N = newValue;
+	}
+	
+	public void setHeight(double newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmProperties::setHeight(), newValue="+newValue);
+		
+		if(newValue > 0.0)
+			m_Height = newValue;
+	}
+	
+	public void setAge(double newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmProperties::setAge(), newValue="+newValue);
+		
+		if(newValue > 0.0)
+			m_Age = newValue;
+	}
+	
+	public void setType(int newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmProperties::setType(), newValue="+newValue);
+		
+		if(newValue >= 0 && newValue < 5)
+			m_Type = newValue;
+	}
+	
+	public void setUseConstraints(boolean newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmProperties::setUseConstraints(), newValue="+newValue);
+		
+		m_UseConstraints = newValue;
+	}
+	
+	///////////////////////////////////////////////////////////////////////////////////
+	
+	public AlgorithmProperties() {}
+	
+	public AlgorithmProperties(
+		int type,
+		boolean useConstraints,
+		double weight,
+		double load,
+		double speed,
+		double n,
+		double height,
+		double age
+		)
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmProperties::AlgorithmProperties(), type="+type+", useConstraints="+useConstraints+", weight="+weight+", load="+load+", speed="+speed+", n="+n+", height="+height+", age="+age);
+		
+		setType(type);
+		setUseConstraints(useConstraints);
+		setWeight(weight);
+		setLoad(load);
+		setSpeed(speed);
+		setN(n);
+		setHeight(height);
+		setAge(age);
+	}
+
+	@Override
+	public Byte[] Pack()
+	{
+		StartPacking();
+		packInt( getType() );
+		packInt( getUseConstraints() ? 1 : 0 );
+		packDouble( getWeight() );
+		packDouble( getLoad() );
+		packDouble( getSpeed() );
+		packDouble( getN() );
+		packDouble( getHeight() );
+		packDouble( getAge() );
+		return DonePacking();
+	}
+
+	@Override
+	public int Unpack(Byte[] buf) throws Exception
+	{
+		StartUnpacking(buf);
+		setType( unpackInt() );
+		setUseConstraints( unpackInt() == 0 ? false : true );
+		setWeight( unpackDouble() );
+		setLoad( unpackDouble() );
+		setSpeed( unpackDouble() );
+		setN( unpackDouble() );
+		setHeight( unpackDouble() );
+		setAge( unpackDouble() );
+		return DoneUnpacking();
+	}
+
+}

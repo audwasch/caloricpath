@@ -1,0 +1,45 @@
+package com.caloricpath.shared;
+
+import com.rpc.shared.Packable;
+
+public class GeoPoint 
+	extends Packable
+{
+	private Double m_Lat=0.0;
+	private Double m_Lon=0.0;
+	public Double getLat() { return m_Lat; }
+	public Double getLon() { return m_Lon; }
+	public void setLat(Double newValue) { m_Lat=newValue; }
+	public void setLon(Double newValue) { m_Lon=newValue; }
+	
+	public GeoPoint() {}
+	
+	public GeoPoint(Double lat, Double lon)
+	{
+		m_Lat=lat;
+		m_Lon=lon;
+	}
+	
+	public String toString()
+	{
+		return "Lat="+getLat()+", Lon="+getLon() ;
+	}
+	
+	@Override
+	public Byte[] Pack()
+	{
+		StartPacking();
+		packDouble(m_Lat);
+		packDouble(m_Lon);
+		return DonePacking();
+	}
+	
+	@Override
+	public int Unpack(Byte[] buf)  throws Exception 
+	{
+		StartUnpacking(buf);
+		m_Lat = unpackDouble();
+		m_Lon = unpackDouble();
+		return DoneUnpacking();	
+	}
+}

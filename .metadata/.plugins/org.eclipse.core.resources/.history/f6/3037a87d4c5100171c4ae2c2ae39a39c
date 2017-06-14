@@ -1,0 +1,833 @@
+package com.caloricpath.server;
+
+import java.awt.image.BufferedImage;
+import java.io.File;
+import javax.imageio.IIOException;
+import javax.imageio.ImageIO;
+import javax.servlet.ServletConfig;
+import javax.servlet.ServletContext;
+import javax.servlet.ServletException;
+import com.caloricpath.client.ImageService;
+import com.caloricpath.shared.AppGlobal;
+import com.google.gwt.user.server.rpc.RemoteServiceServlet;
+import com.rpc.server.RpcServiceImpl;
+import com.rpc.shared.Trace;
+
+/**
+ * The server-side implementation of the RPC service.
+ */
+
+@SuppressWarnings("serial")
+public class ImageServiceImpl 
+		extends RemoteServiceServlet 
+		implements ImageService
+{
+	private final static boolean UBUNTU=true;
+	private final static boolean DEBUGGING=true;
+	
+	private final static boolean WITH_RESTORE_CONFIG_AT_BOOTUP=false;
+	private final static boolean WITH_SAVE_CONFIG_AFTER_CONSTRUCTION=true;
+	private static final boolean WITH_BUTTON_INITIALIZATION=false; /* must be same as CaloricPath class */
+	
+	private static final String SERVER_WAR_PATH = UBUNTU ? "/opt/tomcat/webapps/CaloricPath/" : "/usr/share/tomcat/webapps/CaloricPath/" ; /* include last slash */
+	private static final String SERVER_WAR_PATH_ECLIPSE = "" ;  /* include last slash */
+	
+	//==========================================================
+	//==========================================================
+	
+	private static SatFileServer m_SatFile;
+	private static MapServer m_Map;
+	private static RenderViewServer m_View;
+	private static ConstraintCollectionServer m_Constraints;
+	private static PathConfigCollectionServer m_PathConfigs;
+	private static PathResultCollectionServer m_PathResults;
+	private static PathStatusCollectionServer m_PathStatus;
+	private static boolean m_IsRunningOnEclipse = true;
+	private static boolean  m_NeverInitialized = true;
+	
+	public static MapServer getMap() { return m_Map; }
+	public static PathResultCollectionServer getPathResults() { return m_PathResults; }
+	public static PathConfigCollectionServer getPathConfigs() { return m_PathConfigs; }
+	public static PathStatusCollectionServer getPathStatus() { return m_PathStatus; }
+	public static PathProcessor getPathProcessor() { return m_PathConfigs.getProcessor(); }
+	public static ConstraintCollectionServer getConstraints() { return m_Constraints; }
+	public static ConstraintProcessor getConstraintProcessor() { return m_Constraints.getProcessor(); }
+	public static boolean getIsRunningOnEclipse() { return m_IsRunningOnEclipse; }
+
+	public static SatFileServer getSat() { return m_SatFile; }
+	
+	//==========================================================
+	//==========================================================
+	
+	public static void Lock() { RpcServiceImpl.Lock(); }
+	public static void Unlock() { RpcServiceImpl.Unlock(); }
+	public static int getNumLocks() { return RpcServiceImpl.getNumLocks(); }
+
+	//==========================================================
+	//==========================================================
+	
+	public static String getWarPath()
+	{
+		return getIsRunningOnEclipse() ? 
+			SERVER_WAR_PATH_ECLIPSE : SERVER_WAR_PATH ;
+	}
+
+	//==========================================================
+	//==========================================================
+	
+	/* order of operations */
+	/* RPC module constructor should get called first.  This will lock */
+	/* mutex and do complete RPC module initialization. */
+	/* IMAGE module can't be initialized until init(), since */
+	/* that is when the Version information is available. */
+	
+	public ImageServiceImpl()
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println("ImageServiceImpl::ImageServiceImpl()");
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	@Override
+	public void init() throws ServletException 
+	{
+		super.init();
+		
+		Lock();
+		try
+		{
+			if( m_NeverInitialized )
+			{
+				if(DEBUGGING)
+					Trace.println("ImageServiceImpl::init()");
+				
+				captureVersion();
+				finalConstructor();
+				m_NeverInitialized=false;
+				
+				if(DEBUGGING)
+					Trace.println("* * * IMAGE SERVER STARTED * * * ");
+			}
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	private void captureVersion()
+	{
+		if(DEBUGGING)
+			Trace.println("ImageServiceImpl::captureVersion()");
+		
+		try
+		{
+			ServletConfig config = getServletConfig();
+			ServletContext context = config.getServletContext();
+			
+			m_IsRunningOnEclipse = context.getServerInfo().toLowerCase().contains("jetty");
+			
+			Trace.println("IMAGE_SERVICE_VERSION: [" + context.getServerInfo() );
+			Trace.println("IsRunningOnEclipse: " + m_IsRunningOnEclipse );
+		}
+		catch(Exception e)
+		{
+			Trace.println("IMAGE_SERVICE_VERSION ERROR: " + e.getMessage() );
+		}
+	}
+
+	private void finalConstructor()
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println("ImageServiceImpl::finalConstructor()");
+
+			RpcServiceImpl.SERVER_CONFIG_PATH = "/satellite/" ;
+			
+			m_SatFile = new SatFileServer("MySatFile");
+			m_Map = new MapServer("MyMap", m_SatFile);
+			m_View = new RenderViewServer("MyView");
+			m_Constraints = new ConstraintCollectionServer("MyConstraints");
+			m_PathConfigs = new PathConfigCollectionServer("MyPathConfigs");
+			m_PathResults = new PathResultCollectionServer("MyPathResults");
+			m_PathStatus = new PathStatusCollectionServer("MyPathStatus");
+			
+			if( RpcServiceImpl.getEngine()==null )
+				Trace.println("ImageServiceImpl::ImageServiceImpl(), Rpc_Library_Not_Initialized_First");
+			
+			RpcServiceImpl.getEngine().AttachObject(m_SatFile);
+			RpcServiceImpl.getEngine().AttachObject(m_Map);
+			RpcServiceImpl.getEngine().AttachObject(m_View);
+			RpcServiceImpl.getEngine().AttachObject(m_Constraints);
+			RpcServiceImpl.getEngine().AttachObject(m_PathConfigs);
+			RpcServiceImpl.getEngine().AttachObject(m_PathResults);
+			RpcServiceImpl.getEngine().AttachObject(m_PathStatus);
+			
+			if( WITH_SAVE_CONFIG_AFTER_CONSTRUCTION )
+			{
+				RpcServiceImpl.getEngine().setPropertiesFilename(RpcServiceImpl.CONFIG_FILENAME);
+				try
+				{
+					RpcServiceImpl.getEngine().SaveAllProperties();
+				}
+				catch(Exception e) 
+				{
+					Trace.println("ImageServiceImpl::ImageServiceImpl(), save exception: " + e.getMessage() );
+				}
+			}
+	
+			if( WITH_BUTTON_INITIALIZATION==false )
+			{
+				try
+				{
+					m_SatFile.FileIndex.setValue(0);
+					//m_SatFile.FileName.setValue("Papua_New_Guinea_Tract_139m");
+					createOrigTexture();
+				}
+				catch(Exception e)
+				{
+					Trace.println("Problem initializing texture/filename: " + e.getMessage() );
+				}
+			}
+			
+			if( WITH_RESTORE_CONFIG_AT_BOOTUP )
+			{
+				RpcServiceImpl.getEngine().setPropertiesFilename(RpcServiceImpl.CONFIG_FILENAME);
+				try
+				{
+					RpcServiceImpl.getEngine().RestoreAllProperties();
+				}
+				catch(Exception e) 
+				{
+					Trace.println("ImageServiceImpl::ImageServiceImpl(), restore exception: " + e.getMessage() );
+				}
+			}
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+
+	@Override
+	public Boolean initialize() 
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println("ImageServiceImpl::initialize()");
+		}
+		finally
+		{
+			Unlock();
+		}
+		
+		return true;
+	}
+	
+	@Override
+	public String createOrigTexture() throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("ImageServiceImpl::createOrigTexture()");
+		
+		try
+		{
+			File inFile = new File( 
+				AppGlobal.SERVER_SATELLITE_PATH + m_SatFile.FileName.getValue() + ".bmp" 
+				);	
+			
+			File topOutFile = new File( getWarPath() + AppGlobal.TEXTURE_TOP_FILE );
+			File botOutFile = new File( getWarPath() + AppGlobal.TEXTURE_BOT_FILE );
+			
+			BufferedImage full = ImageIO.read(inFile);
+			
+			if( full==null )
+				throw new Exception("ImageServiceImpl::createOrigTexture(), Unable to read file");
+			
+			int split = (int)(full.getHeight() / 2.0);
+			BufferedImage topIm = full.getSubimage(0,0,full.getWidth(),split + 1); /* +1 for coverage on overlap */
+			BufferedImage botIm = full.getSubimage(0, split - 1, full.getWidth(), full.getHeight() - split + 1);
+			
+			ImageIO.write(topIm, "bmp", topOutFile);
+			ImageIO.write(botIm, "bmp", botOutFile);
+		}
+		catch(IIOException e)
+		{
+			throw new Exception(e.getMessage());
+		}
+		
+		return "ImageServiceImpl::createOrigTexture, success";
+	}
+	
+	// ==================================
+	// implement imageServiceAsync interfaces
+	// ==================================
+
+	@Override
+	public String createTexture(Double top, Double left, Double width, Double height) throws Exception
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println("ImageServiceImpl::createTexture(), T="+top+", L="+left+", W="+width+"H="+height);
+			
+			File inFile = new File( 
+				AppGlobal.SERVER_SATELLITE_PATH + m_SatFile.FileName.getValue() + ".bmp" 
+				);
+			
+			File topOutFile = new File( getWarPath() + AppGlobal.TEXTURE_TOP_FILE );
+			File botOutFile = new File( getWarPath() + AppGlobal.TEXTURE_BOT_FILE );
+			
+			BufferedImage full = ImageIO.read(inFile);
+			
+			if( full==null )
+				throw new Exception("ImageServiceImpl::createTexture(), Unable to read file");
+			
+			BufferedImage area = full.getSubimage(
+				longToX(left),
+				latToY(top),
+				widthToCols(width),
+				heightToRows(height)
+				);
+			int split = (int)(area.getHeight() / 2.0);
+			BufferedImage topIm = area.getSubimage(0,0,area.getWidth(),split + 1); /* +1 for coverage on overlap */
+			BufferedImage botIm = area.getSubimage(0, split - 1, area.getWidth(), area.getHeight() - split + 1);
+			ImageIO.write(topIm, "bmp", topOutFile);
+			ImageIO.write(botIm, "bmp", botOutFile);
+		}
+		catch(IIOException e)
+		{
+			throw new Exception( e.getMessage() );
+		}
+		finally
+		{
+			Unlock();
+		}
+		
+		return "ImageServiceImpl::createTexture, success";
+	}
+	
+
+	//=======================================
+	// private helper functions
+	//=======================================
+
+	/* keep these here because they're just for creating the textures */
+	
+	private int longToX(double lon)
+	{
+		int retn=0;
+		Lock();
+		try
+		{
+			double widthLong = m_SatFile.FileStatus.getValue().getDegrees()[1];
+			double colsPerDegLong = (double)m_Map.OrigSize.getValue()[0] / widthLong;
+			double leftLong = m_SatFile.FileStatus.getValue().getCenter()[1] - (0.5 * widthLong);
+			double rightLong = leftLong + widthLong;
+			double clippedLong = Math.min(rightLong, lon);
+			clippedLong = Math.max(clippedLong, leftLong);
+			double diffInLongFromLeft = clippedLong - leftLong;
+			double columns = diffInLongFromLeft * colsPerDegLong;
+			retn = (int)columns;
+		}
+		finally
+		{
+			Unlock();
+		}
+		
+		return retn;
+	}
+	
+	private int latToY(double lat)
+	{
+		int retn=0;
+		Lock();
+		try
+		{
+			double heightLat = m_SatFile.FileStatus.getValue().getDegrees()[0];
+			double rowsPerDegLat = (double)m_Map.OrigSize.getValue()[1] / heightLat;
+			double topLat = m_SatFile.FileStatus.getValue().getCenter()[0] + (0.5 * heightLat);
+			double botLat = topLat - heightLat;
+			double clippedLat = Math.min(topLat, lat);
+			clippedLat = Math.max(clippedLat, botLat);
+			double diffInLatFromBot = clippedLat - botLat;
+			double diffInLatFromTop = heightLat - diffInLatFromBot;
+			double rows = diffInLatFromTop * rowsPerDegLat;
+			retn = (int)rows;
+		}
+		finally
+		{
+			Unlock();
+		}
+		
+		return retn;
+	}
+	
+	private int widthToCols(double longs)
+	{
+		int retn=0;
+		Lock();
+		try
+		{
+			double widthLong = m_SatFile.FileStatus.getValue().getDegrees()[1];
+			double colsPerDegLong = (double)m_Map.OrigSize.getValue()[0] / widthLong;
+			double columns = colsPerDegLong * longs;
+			retn = (int)columns;
+		}
+		finally
+		{
+			Unlock();
+		}
+		
+		return retn;
+	}
+	
+	private int heightToRows(double lats)
+	{
+		int retn=0;
+		Lock();
+		try
+		{
+			double heightLat = m_SatFile.FileStatus.getValue().getDegrees()[0];
+			double rowsPerDegLat = (double)m_Map.OrigSize.getValue()[1] / heightLat;
+			double rows = rowsPerDegLat * lats;
+			retn = (int)rows;
+		}
+		finally
+		{
+			Unlock();
+		}
+		
+		return retn;
+	}
+}
+
+
+
+
+
+
+
+//
+//import java.awt.image.BufferedImage;
+//import java.io.File;
+//import javax.imageio.IIOException;
+//import javax.imageio.ImageIO;
+//import javax.servlet.ServletConfig;
+//import javax.servlet.ServletContext;
+//import javax.servlet.ServletException;
+//import com.caloricpath.client.ImageService;
+//import com.caloricpath.shared.AppGlobal;
+//import com.google.gwt.user.server.rpc.RemoteServiceServlet;
+//import com.rpc.server.RpcServiceImpl;
+//import com.rpc.shared.Trace;
+//
+///**
+// * The server-side implementation of the RPC service.
+// */
+//
+//@SuppressWarnings("serial")
+//public class ImageServiceImpl 
+//		extends RemoteServiceServlet 
+//		implements ImageService
+//{	
+//	private final static boolean DEBUGGING=true;
+//	
+//	private final static boolean WITH_RESTORE_CONFIG_AT_BOOTUP=false;
+//	private final static boolean WITH_SAVE_CONFIG_AFTER_CONSTRUCTION=true;
+//	private static final boolean WITH_BUTTON_INITIALIZATION=false; /* must be same as CaloricPath class */
+//	
+//	private static final String SERVER_WAR_PATH = "/usr/share/tomcat/webapps/CaloricPath/" ; /* include last slash */
+//	private static final String SERVER_WAR_PATH_ECLIPSE = "" ;  /* include last slash */
+//	
+//	//==========================================================
+//	//==========================================================
+//	
+//	private static SatFileServer m_SatFile;
+//	private static MapServer m_Map;
+//	private static RenderViewServer m_View;
+//	private static ConstraintCollectionServer m_Constraints;
+//	private static PathConfigCollectionServer m_PathConfigs;
+//	private static PathResultCollectionServer m_PathResults;
+//	private static PathStatusCollectionServer m_PathStatus;
+//	private static boolean m_IsRunningOnEclipse = true;
+//	private static boolean  m_NeverInitialized = true;
+//	
+//	public static MapServer getMap() { return m_Map; }
+//	public static PathResultCollectionServer getPathResults() { return m_PathResults; }
+//	public static PathConfigCollectionServer getPathConfigs() { return m_PathConfigs; }
+//	public static PathStatusCollectionServer getPathStatus() { return m_PathStatus; }
+//	public static PathProcessor getPathProcessor() { return m_PathConfigs.getProcessor(); }
+//	public static ConstraintCollectionServer getConstraints() { return m_Constraints; }
+//	public static ConstraintProcessor getConstraintProcessor() { return m_Constraints.getProcessor(); }
+//	public static boolean getIsRunningOnEclipse() { return m_IsRunningOnEclipse; }
+//
+//	public static SatFileServer getSat() { return m_SatFile; }
+//	
+//	//==========================================================
+//	//==========================================================
+//	
+//	public static void Lock() { RpcServiceImpl.Lock(); }
+//	public static void Unlock() { RpcServiceImpl.Unlock(); }
+//	public static int getNumLocks() { return RpcServiceImpl.getNumLocks(); }
+//
+//	//==========================================================
+//	//==========================================================
+//	
+//	public static String getWarPath()
+//	{
+//		return getIsRunningOnEclipse() ? 
+//			SERVER_WAR_PATH_ECLIPSE : SERVER_WAR_PATH ;
+//	}
+//
+//	//==========================================================
+//	//==========================================================
+//	
+//	/* order of operations */
+//	/* RPC module constructor should get called first.  This will lock */
+//	/* mutex and do complete RPC module initialization. */
+//	/* IMAGE module can't be initialized until init(), since */
+//	/* that is when the Version information is available. */
+//	
+//	public ImageServiceImpl()
+//	{
+//		Lock();
+//		try
+//		{
+//			if(DEBUGGING)
+//				Trace.println("ImageServiceImpl::ImageServiceImpl()");
+//		}
+//		finally
+//		{
+//			Unlock();
+//		}
+//		
+//	}
+//	
+//	@Override
+//	public void init() throws ServletException 
+//	{
+//		super.init();
+//		
+//		Lock();
+//		try
+//		{
+//			if( m_NeverInitialized )
+//			{
+//				if(DEBUGGING)
+//					Trace.println("ImageServiceImpl::init()");
+//				
+//				captureVersion();
+//				finalConstructor();
+//				m_NeverInitialized=false;
+//				
+//				if(DEBUGGING)
+//					Trace.println("* * * IMAGE SERVER STARTED * * * ");
+//			}
+//		}
+//		finally
+//		{
+//			Unlock();
+//		}
+//	}
+//	
+//	private void captureVersion()
+//	{
+//		if(DEBUGGING)
+//			Trace.println("ImageServiceImpl::captureVersion()");
+//		
+//		try
+//		{
+//			ServletConfig config = getServletConfig();
+//			ServletContext context = config.getServletContext();
+//			
+//			m_IsRunningOnEclipse = context.getServerInfo().toLowerCase().contains("jetty");
+//			
+//			Trace.println("IMAGE_SERVICE_VERSION: [" + context.getServerInfo() );
+//			Trace.println("IsRunningOnEclipse: " + m_IsRunningOnEclipse );
+//		}
+//		catch(Exception e)
+//		{
+//			Trace.println("IMAGE_SERVICE_VERSION ERROR: " + e.getMessage() );
+//		}
+//	}
+//
+//	private void finalConstructor()
+//	{
+//		Lock();
+//		try
+//		{
+//			if(DEBUGGING)
+//				Trace.println("ImageServiceImpl::finalConstructor()");
+//
+//			RpcServiceImpl.SERVER_CONFIG_PATH = "/satellite/" ;
+//			
+//			m_SatFile = new SatFileServer("MySatFile");
+//			m_Map = new MapServer("MyMap", m_SatFile);
+//			m_View = new RenderViewServer("MyView");
+//			m_Constraints = new ConstraintCollectionServer("MyConstraints");
+//			m_PathConfigs = new PathConfigCollectionServer("MyPathConfigs");
+//			m_PathResults = new PathResultCollectionServer("MyPathResults");
+//			m_PathStatus = new PathStatusCollectionServer("MyPathStatus");
+//			
+//			if( RpcServiceImpl.getEngine()==null )
+//				Trace.println("ImageServiceImpl::ImageServiceImpl(), Rpc_Library_Not_Initialized_First");
+//			
+//			RpcServiceImpl.getEngine().AttachObject(m_SatFile);
+//			RpcServiceImpl.getEngine().AttachObject(m_Map);
+//			RpcServiceImpl.getEngine().AttachObject(m_View);
+//			RpcServiceImpl.getEngine().AttachObject(m_Constraints);
+//			RpcServiceImpl.getEngine().AttachObject(m_PathConfigs);
+//			RpcServiceImpl.getEngine().AttachObject(m_PathResults);
+//			RpcServiceImpl.getEngine().AttachObject(m_PathStatus);
+//			
+//			if( WITH_SAVE_CONFIG_AFTER_CONSTRUCTION )
+//			{
+//				RpcServiceImpl.getEngine().setPropertiesFilename(RpcServiceImpl.CONFIG_FILENAME);
+//				try
+//				{
+//					RpcServiceImpl.getEngine().SaveAllProperties();
+//				}
+//				catch(Exception e) 
+//				{
+//					Trace.println("ImageServiceImpl::ImageServiceImpl(), save exception: " + e.getMessage() );
+//				}
+//			}
+//	
+//			if( WITH_BUTTON_INITIALIZATION==false )
+//			{
+//				try
+//				{
+//					m_SatFile.FileName.setValue("Papua_New_Guinea_Tract");
+//					createOrigTexture();
+//				}
+//				catch(Exception e)
+//				{
+//					Trace.println("Problem initializing texture/filename: " + e.getMessage() );
+//				}
+//			}
+//			
+//			if( WITH_RESTORE_CONFIG_AT_BOOTUP )
+//			{
+//				RpcServiceImpl.getEngine().setPropertiesFilename(RpcServiceImpl.CONFIG_FILENAME);
+//				try
+//				{
+//					RpcServiceImpl.getEngine().RestoreAllProperties();
+//				}
+//				catch(Exception e) 
+//				{
+//					Trace.println("ImageServiceImpl::ImageServiceImpl(), restore exception: " + e.getMessage() );
+//				}
+//			}
+//		}
+//		finally
+//		{
+//			Unlock();
+//		}
+//	}
+//
+//	@Override
+//	public Boolean initialize() 
+//	{
+//		Lock();
+//		try
+//		{
+//			if(DEBUGGING)
+//				Trace.println("ImageServiceImpl::initialize()");
+//		}
+//		finally
+//		{
+//			Unlock();
+//		}
+//		
+//		return true;
+//	}
+//	
+//	@Override
+//	public String createOrigTexture() throws Exception
+//	{
+//		if(DEBUGGING)
+//			Trace.println("ImageServiceImpl::createOrigTexture()");
+//		
+//		try
+//		{
+//			File inFile = new File( 
+//				AppGlobal.SERVER_SATELLITE_PATH + m_SatFile.FileName.getValue() + ".bmp" 
+//				);	
+//			
+//			File topOutFile = new File( getWarPath() + AppGlobal.TEXTURE_TOP_FILE );
+//			File botOutFile = new File( getWarPath() + AppGlobal.TEXTURE_BOT_FILE );
+//			
+//			BufferedImage full = ImageIO.read(inFile);
+//			
+//			if( full==null )
+//				throw new Exception("ImageServiceImpl::createOrigTexture(), Unable to read file");
+//			
+//			int split = (int)(full.getHeight() / 2.0);
+//			BufferedImage topIm = full.getSubimage(0,0,full.getWidth(),split + 1); /* +1 for coverage on overlap */
+//			BufferedImage botIm = full.getSubimage(0, split - 1, full.getWidth(), full.getHeight() - split + 1);
+//			
+//			ImageIO.write(topIm, "bmp", topOutFile);
+//			ImageIO.write(botIm, "bmp", botOutFile);
+//		}
+//		catch(IIOException e)
+//		{
+//			throw new Exception(e.getMessage());
+//		}
+//		
+//		return "ImageServiceImpl::createOrigTexture, success";
+//	}
+//	
+//	// ==================================
+//	// implement imageServiceAsync interfaces
+//	// ==================================
+//
+//	@Override
+//	public String createTexture(Double top, Double left, Double width, Double height) throws Exception
+//	{
+//		Lock();
+//		try
+//		{
+//			if(DEBUGGING)
+//				Trace.println("ImageServiceImpl::createTexture(), T="+top+", L="+left+", W="+width+"H="+height);
+//			
+//			File inFile = new File( 
+//				AppGlobal.SERVER_SATELLITE_PATH + m_SatFile.FileName.getValue() + ".bmp" 
+//				);
+//			
+//			File topOutFile = new File( getWarPath() + AppGlobal.TEXTURE_TOP_FILE );
+//			File botOutFile = new File( getWarPath() + AppGlobal.TEXTURE_BOT_FILE );
+//			
+//			BufferedImage full = ImageIO.read(inFile);
+//			
+//			if( full==null )
+//				throw new Exception("ImageServiceImpl::createTexture(), Unable to read file");
+//			
+//			BufferedImage area = full.getSubimage(
+//				longToX(left),
+//				latToY(top),
+//				widthToCols(width),
+//				heightToRows(height)
+//				);
+//			int split = (int)(area.getHeight() / 2.0);
+//			BufferedImage topIm = area.getSubimage(0,0,area.getWidth(),split + 1); /* +1 for coverage on overlap */
+//			BufferedImage botIm = area.getSubimage(0, split - 1, area.getWidth(), area.getHeight() - split + 1);
+//			ImageIO.write(topIm, "bmp", topOutFile);
+//			ImageIO.write(botIm, "bmp", botOutFile);
+//		}
+//		catch(IIOException e)
+//		{
+//			throw new Exception( e.getMessage() );
+//		}
+//		finally
+//		{
+//			Unlock();
+//		}
+//		
+//		return "ImageServiceImpl::createTexture, success";
+//	}
+//	
+//
+//	//=======================================
+//	// private helper functions
+//	//=======================================
+//
+//	private int longToX(double lon)
+//	{
+//		int retn=0;
+//		Lock();
+//		try
+//		{
+//			double widthLong = m_SatFile.FileStatus.getValue().getDegrees()[1];
+//			double colsPerDegLong = (double)m_Map.OrigSize.getValue()[0] / widthLong;
+//			double leftLong = m_SatFile.FileStatus.getValue().getCenter()[1] - (0.5 * widthLong);
+//			double rightLong = leftLong + widthLong;
+//			double clippedLong = Math.min(rightLong, lon);
+//			clippedLong = Math.max(clippedLong, leftLong);
+//			double diffInLongFromLeft = clippedLong - leftLong;
+//			double columns = diffInLongFromLeft * colsPerDegLong;
+//			retn = (int)columns;
+//		}
+//		finally
+//		{
+//			Unlock();
+//		}
+//		
+//		return retn;
+//	}
+//	
+//	private int latToY(double lat)
+//	{
+//		int retn=0;
+//		Lock();
+//		try
+//		{
+//			double heightLat = m_SatFile.FileStatus.getValue().getDegrees()[0];
+//			double rowsPerDegLat = (double)m_Map.OrigSize.getValue()[1] / heightLat;
+//			double topLat = m_SatFile.FileStatus.getValue().getCenter()[0] + (0.5 * heightLat);
+//			double botLat = topLat - heightLat;
+//			double clippedLat = Math.min(topLat, lat);
+//			clippedLat = Math.max(clippedLat, botLat);
+//			double diffInLatFromBot = clippedLat - botLat;
+//			double diffInLatFromTop = heightLat - diffInLatFromBot;
+//			double rows = diffInLatFromTop * rowsPerDegLat;
+//			retn = (int)rows;
+//		}
+//		finally
+//		{
+//			Unlock();
+//		}
+//		
+//		return retn;
+//	}
+//	
+//	private int widthToCols(double longs)
+//	{
+//		int retn=0;
+//		Lock();
+//		try
+//		{
+//			double widthLong = m_SatFile.FileStatus.getValue().getDegrees()[1];
+//			double colsPerDegLong = (double)m_Map.OrigSize.getValue()[0] / widthLong;
+//			double columns = colsPerDegLong * longs;
+//			retn = (int)columns;
+//		}
+//		finally
+//		{
+//			Unlock();
+//		}
+//		
+//		return retn;
+//	}
+//	
+//	private int heightToRows(double lats)
+//	{
+//		int retn=0;
+//		Lock();
+//		try
+//		{
+//			double heightLat = m_SatFile.FileStatus.getValue().getDegrees()[0];
+//			double rowsPerDegLat = (double)m_Map.OrigSize.getValue()[1] / heightLat;
+//			double rows = rowsPerDegLat * lats;
+//			retn = (int)rows;
+//		}
+//		finally
+//		{
+//			Unlock();
+//		}
+//		
+//		return retn;
+//	}
+//}

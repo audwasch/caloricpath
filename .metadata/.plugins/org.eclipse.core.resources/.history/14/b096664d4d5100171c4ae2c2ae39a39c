@@ -1,0 +1,52 @@
+package com.caloricpath.server;
+
+import com.caloricpath.shared.RenderView;
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.RpcClass;
+import com.rpc.shared.RpcPropertyClass;
+import com.rpc.shared.Trace;
+
+public class RenderViewServer
+	extends RpcClass
+{
+	public RpcPropertyClass<RenderView> View = new RpcPropertyClass<RenderView>(
+		"View",
+		new RenderView(
+			new Double[] {0.0, 110.0, 120.0},
+			new Double[] {0.0, 0.0, 0.0},
+			-90.0,
+			-42.5,
+			//-Math.toDegrees(Math.atan(Math.toRadians(110.0 / 120.0))),
+			0	//0: camera
+			),
+		READWRITE+SAVERESTORE
+		);
+
+	public RenderViewServer(String name)
+	{
+		super(name);
+		View.ChangedEvent.add(View_Changed);
+	}
+
+	@Override
+	public void AttachMembers()
+	{
+		AttachMember( View );
+	}
+
+	@Override
+	public void DetachMembers()
+	{
+		DetachMember( View );
+	}
+
+	private HandleChanged<RenderView> View_Changed = new HandleChanged<RenderView>()
+	{
+		@Override
+		public void Changed(RenderView newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("RenderViewServer::View_Changed()");
+		}
+	};
+}

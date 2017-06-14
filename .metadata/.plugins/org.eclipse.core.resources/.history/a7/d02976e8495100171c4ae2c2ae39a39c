@@ -1,0 +1,60 @@
+package com.caloricpath.client;
+
+import com.google.gwt.user.client.rpc.AsyncCallback;
+
+/**
+ * The async counterpart of <code>ImageService</code>.
+ */
+
+public interface ImageServiceAsync 
+{
+	void initialize(AsyncCallback<Boolean> callback );
+
+	void createTexture(Double top, Double left, Double width, Double Height, AsyncCallback<String> callback) throws Exception;
+	void createOrigTexture(AsyncCallback<String> callback) throws Exception;
+
+//	void println(String input, AsyncCallback<Boolean> callback);
+//	void Connect(AsyncCallback<Integer> callback) throws Exception;
+//	void Disconnect(int id, AsyncCallback<Integer> callback) throws Exception;
+//	void Poll( int id, AsyncCallback<String[]> callback ) throws Exception ;
+//	
+//	void Execute( String key, String[] parameters, AsyncCallback<Integer> callback ) throws Exception;
+//	
+//	void setValue_Integer( String key, Integer newValue, AsyncCallback<Integer> callback ) throws Exception ;
+//	void getValue_Integer( int id, String key, AsyncCallback<Integer> callback ) throws Exception;
+//	void setValue_ArrayInteger( String key, Integer[] newValue, AsyncCallback<Integer> callback ) throws Exception ;
+//	void getValue_ArrayInteger( int id, String key, AsyncCallback<Integer[]> callback ) throws Exception;
+//	
+//	void setValue_Byte( String key, Byte newValue, AsyncCallback<Integer> callback ) throws Exception;
+//	void getValue_Byte( int id, String key, AsyncCallback<Byte> callback ) throws Exception;
+//	void setValue_ArrayByte( String key, Byte[] newValue, AsyncCallback<Integer> callback ) throws Exception;
+//	void getValue_ArrayByte( int id, String key, AsyncCallback<Byte[]> callback ) throws Exception;
+//	
+//	void setValue_String( String key, String newValue, AsyncCallback<Integer> callback ) throws Exception ;
+//	void getValue_String( int id, String key, AsyncCallback<String> callback ) throws Exception;
+//	void setValue_ArrayString( String key, String[] newValue, AsyncCallback<Integer> callback ) throws Exception ;
+//	void getValue_ArrayString( int id, String key, AsyncCallback<String[]> callback ) throws Exception;
+//	
+//	void setValue_Double( String key, Double newValue, AsyncCallback<Integer> callback ) throws Exception ;
+//	void getValue_Double( int id, String key, AsyncCallback<Double> callback ) throws Exception;
+//	void setValue_ArrayDouble( String key, Double[] newValue, AsyncCallback<Integer> callback ) throws Exception ;
+//	void getValue_ArrayDouble( int id, String key, AsyncCallback<Double[]> callback ) throws Exception;
+//	
+//	void setValue_Boolean( String key, Boolean newValue, AsyncCallback<Integer> callback ) throws Exception ;
+//	void getValue_Boolean( int id, String key, AsyncCallback<Boolean> callback ) throws Exception;
+//	void setValue_ArrayBoolean( String key, Boolean[] newValue, AsyncCallback<Integer> callback ) throws Exception ;
+//	void getValue_ArrayBoolean( int id, String key, AsyncCallback<Boolean[]> callback ) throws Exception;
+//	
+//	void setValue_Float( String key, Float newValue, AsyncCallback<Integer> callback ) throws Exception ;
+//	void getValue_Float( int id, String key, AsyncCallback<Float> callback ) throws Exception;
+//	void setValue_ArrayFloat( String key, Float[] newValue, AsyncCallback<Integer> callback ) throws Exception ;
+//	void getValue_ArrayFloat( int id, String key, AsyncCallback<Float[]> callback ) throws Exception;
+//	
+//	void setValue_Class( String key, Byte[] newValue, AsyncCallback<Integer> callback ) throws Exception;
+//	void getValue_Class( int id, String key, AsyncCallback<Byte[]> callback ) throws Exception;
+//	void setValue_ArrayClass( String key, Byte[] newValue, AsyncCallback<Integer> callback ) throws Exception;
+//	void getValue_ArrayClass( int id, String key, AsyncCallback<Byte[]> callback ) throws Exception;
+//	
+//	void SavePropertiesToFile( String filename, AsyncCallback<Integer> callback ) throws Exception ;
+//	void RestoreAllProperties( String filename, AsyncCallback<Integer> callback ) throws Exception ;
+}

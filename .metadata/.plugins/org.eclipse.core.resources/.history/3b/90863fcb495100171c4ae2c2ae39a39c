@@ -1,0 +1,27 @@
+package com.caloricpath.client;
+
+import com.caloricpath.shared.Constraint;
+import com.caloricpath.shared.ConstraintCollectionClass;
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.Trace;
+
+public class ConstraintCollectionClient
+	extends ConstraintCollectionClass
+{
+	public ConstraintCollectionClient(String name)
+	{
+		super(name);
+		List.ChangedEvent.add(List_Changed);
+	}
+	
+	private HandleChanged<Constraint[]> List_Changed =
+			new HandleChanged<Constraint[]>()
+	{
+		@Override
+		public void Changed(Constraint[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("ConstraintCollectionClient::List_Changed, n="+newValue.length);
+		}
+	};
+}

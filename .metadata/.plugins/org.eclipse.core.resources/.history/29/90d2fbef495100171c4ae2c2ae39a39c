@@ -1,0 +1,121 @@
+package com.caloricpath.client;
+
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.SplitString;
+import com.rpc.shared.Trace;
+import com.caloricpath.shared.MapClass;
+
+public class MapClient
+	extends MapClass
+{
+	/* "final" means can only be set once, here as member */
+	/* variable, or inside constructor, only */
+	
+	private final SatFileClient m_SatFile ;
+	
+	public MapClient( String name, SatFileClient satFile )
+	{
+		super(name);
+		
+		if(DEBUGGING)
+			Trace.println("MapClient::MapClient(), name="+name);
+		
+		m_SatFile = satFile;
+		
+		m_SatFile.FileName.ChangedEvent.add(FileName_Changed);
+		OrigSize.ChangedEvent.add(OrigSize_Changed);
+		ViewArea.ChangedEvent.add(ViewArea_Changed);
+		//Data.ChangedEvent.add(Data_Changed);
+		ClientSize.ChangedEvent.add(ClientSize_Changed);
+		Mode.ChangedEvent.add(Mode_Changed);
+		RectangleData.ChangedEvent.add(RectangleData_Changed);
+	}
+	
+	private HandleChanged<String> FileName_Changed =
+			new HandleChanged<String>()
+	{
+		@Override
+		public void Changed(String newValue) throws Exception
+		{
+			if(newValue==null) newValue="";
+			if(DEBUGGING)
+				Trace.println("MapClient::FileName_Changed(), newValue="+newValue);
+		}
+	};
+	
+	private HandleChanged<Integer[]> OrigSize_Changed =
+			new HandleChanged<Integer[]>()
+	{
+		@Override
+		public void Changed(Integer[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+			{
+				String str = SplitString.formArrayValue(newValue);
+				Trace.println("MapClient::OrigSize_Changed(), newValue="+str);
+			}
+		}
+	};
+	
+	private HandleChanged<Integer[]> ClientSize_Changed =
+			new HandleChanged<Integer[]>()
+	{
+		@Override
+		public void Changed(Integer[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+			{
+				String str = SplitString.formArrayValue(newValue);
+				Trace.println("MapClient::ClientSize_Changed(), newValue="+str);
+			}
+		}
+	};
+	
+	private HandleChanged<Double[]> ViewArea_Changed =
+			new HandleChanged<Double[]>()
+	{
+		@Override
+		public void Changed(Double[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+			{
+				String str = SplitString.formArrayValue(newValue);
+				Trace.println("MapClient::ViewArea_Changed(), newValue="+str);
+			}
+		}
+	};
+	
+//	private HandleChanged<Integer[]> Data_Changed = 
+//			new HandleChanged<Integer[]>()
+//	{
+//		@Override
+//		public void Changed(Integer[] newValue) throws Exception
+//		{
+//			if(DEBUGGING)
+//				Trace.println("MapClient::Data_Changed(), newValue="+newValue.length);
+//		}
+//	};
+//	
+	private HandleChanged<Double[]> RectangleData_Changed =
+			new HandleChanged<Double[]>()
+	{
+		@Override
+		public void Changed(Double[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("MapClient::RectangleData_Changed(), n="+(newValue==null?"null":newValue.length));
+		}
+	};
+	
+	private HandleChanged<Integer> Mode_Changed =
+			new HandleChanged<Integer>()
+	{
+		@Override
+		public void Changed(Integer newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("MapClient::Mode_Changed(), newValue="+newValue);
+		}
+	};
+
+}

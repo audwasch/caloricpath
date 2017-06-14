@@ -1,0 +1,429 @@
+package com.caloricpath.client;
+
+import com.caloricpath.shared.AppGlobal;
+import com.caloricpath.shared.Constraint;
+import com.caloricpath.shared.PathConfig;
+import com.caloricpath.shared.PathResult;
+import com.caloricpath.shared.utility.Util;
+import com.google.gwt.canvas.client.Canvas;
+import com.google.gwt.canvas.dom.client.Context2d;
+import com.google.gwt.canvas.dom.client.CssColor;
+import com.google.gwt.user.client.ui.LayoutPanel;
+import com.rpc.shared.SplitString;
+import com.rpc.shared.Trace;
+
+public class MapLayers
+{
+	private static boolean DEBUGGING=false;
+	
+	private int m_Width;
+	private int m_Height;
+	private LayoutPanel m_Layout;
+	private Canvas m_RectangleLayer;
+	private Context2d m_RectangleContext;
+	
+	/* m_RectangleData double[]
+	 * 0: left long	 
+	 * 1: top lat		**TRANSLATE lat --> y and long --> x before drawing**
+	 * 2: right long
+	 * 3: bottom lat
+	 */
+	private double[] m_RectangleData;
+	
+	/* m_ViewArea double[]
+	 * 0: left longitude
+	 * 1: top latitude
+	 * 2: width longitude
+	 * 3: height latitude
+	 */
+	private Double[] m_ViewArea;
+	private Canvas[] m_ConstraintLayers;
+	private Constraint[] m_ConstraintData;
+	private Canvas[] m_PathLayers;
+	private PathResult[] m_PathData;
+	private Canvas[] m_EndPtLayers;
+	private PathConfig[] m_EndPtData;
+	
+	public MapLayers() {}
+	
+	public void setLayout(LayoutPanel newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::setLayout");
+		
+		m_Layout = newValue;
+	}
+	
+	public void setWidth(int newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::setWidth newValue="+newValue);
+		
+		if(newValue > 0)
+			m_Width = newValue;
+		
+		redraw();
+	}
+	
+	public void setHeight(int newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::setHeight newValue="+newValue);
+		
+		if(newValue > 0)
+			m_Height = newValue;
+		
+		redraw();
+	}
+	
+	public void setViewArea(Double[] newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::setViewArea n="+newValue.length);
+		
+		if(newValue != null && newValue.length == 4)
+			m_ViewArea = newValue;
+		
+		try
+		{
+			redraw();
+		}
+		catch(Exception e)
+		{
+			Trace.println("MapLayers::setViewArea caught e="+e.getMessage());
+			throw e;
+		}
+	}
+	
+	public void setRectangleData(double[] newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::setRectangleData n="+(newValue==null?"null":newValue.length));
+		
+		if(newValue != null && newValue.length == 4)
+			m_RectangleData = newValue;
+		
+		redraw();
+	}
+	
+	public void clearRectangleData()
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::clearRectangleData()");
+		
+		m_RectangleData = null;
+		m_RectangleLayer = null;
+		
+		redraw();
+	}
+	
+	public void setConstraintData(Constraint[] newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::setConstraintData n="+newValue.length);
+		
+		m_ConstraintLayers = null;
+		m_ConstraintData = newValue;
+		
+		redraw();
+	}
+	
+	public void setPathData(PathResult[] newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::setPathData n="+newValue.length);
+		
+		m_PathLayers = null;
+		m_PathData = newValue;
+		
+		redraw();
+	}
+	
+	public void setEndPtData(PathConfig[] newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::setEndPtData n="+newValue.length);
+		
+		m_EndPtLayers = null;
+		m_EndPtData = newValue;
+		
+		redraw();
+	}
+	
+	public void init()
+	{
+		m_RectangleLayer = null;
+		m_RectangleData = null;
+		
+		m_ConstraintLayers = null;
+		m_ConstraintData = null;
+		
+		m_PathLayers = null;
+		m_PathData = null;
+		
+		m_EndPtLayers = null;
+		m_EndPtData = null;
+	}
+	
+	public void shift(int w, int h)
+	{
+		//TODO
+	}
+	
+	private void redraw()
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::redraw()");
+		
+		if(m_Layout != null && m_ViewArea != null)
+		{
+			int oldCount = m_Layout.getWidgetCount();
+			// Store top layer aka InteractiveLayer to put back at end
+			Canvas topLayer = (Canvas) m_Layout.getWidget(oldCount-1);
+			// Cycle through all current layers, skipping 0 aka ImageLayer
+			for(int i = oldCount - 1; i > 0; i--)
+				m_Layout.remove(i);
+			
+			if(m_RectangleData != null)
+			{
+				//place rectangle layer & draw
+				m_RectangleLayer = Canvas.createIfSupported();
+				m_RectangleLayer.setCoordinateSpaceHeight(m_Height);
+				m_RectangleLayer.setCoordinateSpaceWidth(m_Width);
+				
+				m_RectangleContext = m_RectangleLayer.getCanvasElement().getContext2d();
+				m_Layout.add(m_RectangleLayer);
+				
+				int x0 = longToX(m_RectangleData[0]);
+				int y0 = latToY(m_RectangleData[1]);
+				int x1 = longToX(m_RectangleData[2]);
+				int y1 = latToY(m_RectangleData[3]);
+				
+				m_RectangleContext.setLineWidth(5);
+				m_RectangleContext.setStrokeStyle(CssColor.make(255,255,255));
+				m_RectangleContext.beginPath();
+				
+				m_RectangleContext.rect(x0, y0, x1 - x0, y1 - y0);
+				m_RectangleContext.closePath();
+				m_RectangleContext.stroke();
+			}
+			if(m_ConstraintData != null)
+			{
+				//place appropriate # of constraint layers & draw them
+				int count = m_ConstraintData.length;
+				//create as many layers as will be used
+				m_ConstraintLayers = new Canvas[count];
+				for(int i = 0; i < m_ConstraintData.length; i++)
+				{
+					//create a canvas for the ith constraint
+					m_ConstraintLayers[i] = Canvas.createIfSupported();
+					m_ConstraintLayers[i].setCoordinateSpaceHeight(m_Height);
+					m_ConstraintLayers[i].setCoordinateSpaceWidth(m_Width);
+					
+					//create a context for the ith constraint
+					Context2d context = m_ConstraintLayers[i].getCanvasElement().getContext2d();
+					
+					//add the canvas for the ith constraint to the layout
+					m_Layout.add(m_ConstraintLayers[i]);
+					
+					//draw the ith constraint
+					Constraint it = m_ConstraintData[i];
+					int n = it.getPoints();
+					double fullDist = metersToPixels(it.getDistance());
+					
+					if(it.getType() == Constraint.ConstraintType.LineConstraint)
+					{
+						//draw this line constraint
+						
+						if(it.getDistribution() == Constraint.DistributionType.BinaryDistribution)
+						{
+							drawLine(it, context, n, 1.0, Math.max(1.0, fullDist));			//		______
+																							//		|     |
+																							//		|     |
+																							//		|	  |
+						}
+						else if(it.getDistribution() == Constraint.DistributionType.LinearDistribution)
+						{
+							drawLine(it, context, n, 1.0, 1.0);								//		  /\
+							drawLine(it, context, n, 0.75, Math.max(1.0, 0.3 * fullDist));	//		 /  \
+							drawLine(it, context, n, 0.5, Math.max(1.0, 0.7 * fullDist));	//		/    \
+							drawLine(it, context, n, 0.25, Math.max(1.0, fullDist));
+						}
+						else /* if(it.getDistribution() == Constraint.DistributionType.QuadraticDistribution) */
+						{
+							drawLine(it, context, n, 1.0, 1.0);
+							drawLine(it, context, n, 0.9, Math.max(1.0, 0.3 * fullDist));
+							drawLine(it, context, n, 0.8, Math.max(1.0, 0.7 * fullDist));
+							drawLine(it, context, n, 0.25, Math.max(1.0, fullDist));
+						}
+					}
+					else // it.getType() == Constraint.ConstraintType.PolygonConstraint
+					{
+						//draw this polygon constraint
+						if(it.getDistribution() == Constraint.DistributionType.BinaryDistribution)
+						{
+							drawPoly(it, context, n, 1.0, Math.max(1.0, fullDist));
+						}
+						else if(it.getDistribution() == Constraint.DistributionType.LinearDistribution)
+						{
+							drawPoly(it, context, n, 1.0, 1.0);
+							drawPoly(it, context, n, 0.75, Math.max(1.0, 0.3 * fullDist));
+							drawPoly(it, context, n, 0.5, Math.max(1.0, 0.7 * fullDist));
+							drawPoly(it, context, n, 0.25, Math.max(1.0, fullDist));
+						}
+						else /* if(it.getDistribution() == Constraint.DistributionType.QuadraticDistribution) */
+						{
+							drawPoly(it, context, n, 1.0, 1.0);
+							drawPoly(it, context, n, 0.9, Math.max(1.0, 0.3 * fullDist));
+							drawPoly(it, context, n, 0.8, Math.max(1.0, 0.7 * fullDist));
+							drawPoly(it, context, n, 0.25, Math.max(1.0, fullDist));
+						}
+					}
+				}
+			}
+			if(m_PathData != null)
+			{
+				//place appropriate # of path layers & draw them
+				int count = m_PathData.length;
+				//create as many layers as will be used
+				m_PathLayers = new Canvas[count];
+				for(int i = 0; i < m_PathData.length; i++)
+				{
+					//create a canvas for the ith path
+					m_PathLayers[i] = Canvas.createIfSupported();
+					m_PathLayers[i].setCoordinateSpaceHeight(m_Height);
+					m_PathLayers[i].setCoordinateSpaceWidth(m_Width);
+					
+					//create a context for the ith path
+					Context2d context = m_PathLayers[i].getCanvasElement().getContext2d();
+					
+					//add the canvas for the ith path to the layout
+					m_Layout.add(m_PathLayers[i]);
+					
+					//draw the ith path
+					PathResult it = m_PathData[i];
+					int n = it.getPoints(); /* total / 3.0 because lat, lon, height */
+					if(n > 0)
+					{
+						context.setLineWidth(4.0);
+						context.setStrokeStyle(CssColor.make(Util.ColorValuesCSS[it.getColor()]));
+						context.beginPath();
+						/* NOTE: start, end, and data are stored as lat, long pairs */
+						context.moveTo(longToX(it.getData()[1]), latToY(it.getData()[0]));
+						
+						for(int ndx = 1; ndx < n; ndx++)
+							context.lineTo(longToX(it.getData()[ndx*3+1]), latToY(it.getData()[ndx*3]));
+						
+						context.stroke();
+					}
+				}
+			}
+			if(m_EndPtData != null)
+			{
+				//place appropriate # of path endpoint layers & draw them
+				int count = m_EndPtData.length;
+				//create as many layers as will be used
+				m_EndPtLayers = new Canvas[count];
+				for(int i = 0; i < count; i++)
+				{
+					//create a canvas for the ith pair
+					m_EndPtLayers[i] = Canvas.createIfSupported();
+					m_EndPtLayers[i].setCoordinateSpaceHeight(m_Height);
+					m_EndPtLayers[i].setCoordinateSpaceWidth(m_Width);
+					
+					//create a context for the ith pair
+					Context2d context = m_EndPtLayers[i].getCanvasElement().getContext2d();
+					
+					//add the canvas to for the ith pair to the layout
+					m_Layout.add(m_EndPtLayers[i]);
+					
+					//draw the ith pair
+					PathConfig it = m_EndPtData[i];
+					//context.setStrokeStyle(CssColor.make(Util.ColorValuesCSS[it.getColor()]));
+					context.setFillStyle(CssColor.make(Util.ColorValuesCSS[it.getColor()]));
+					context.beginPath();
+					context.arc(longToX(it.getStart()[1]), latToY(it.getStart()[0]), 5.0, 0.0, 2.0 * Math.PI, true);
+					context.closePath();
+					context.fill();
+					context.setFillStyle(CssColor.make("#000000"));
+					context.fillText("S", longToX(it.getStart()[1])-1, latToY(it.getStart()[0])+1);
+					
+					context.setFillStyle(CssColor.make(Util.ColorValuesCSS[it.getColor()]));
+					context.beginPath();
+					context.arc(longToX(it.getEnd()[1]), latToY(it.getEnd()[0]), 5.0, 0.0, 2.0 * Math.PI, true);
+					context.closePath();
+					context.fill();
+					context.setFillStyle(CssColor.make("#000000"));
+					context.fillText("E", longToX(it.getEnd()[1])-1, latToY(it.getEnd()[0])+1);
+				}
+			}
+			
+			m_Layout.add(topLayer);
+		}
+	}
+	
+	private void drawLine(Constraint it, Context2d context, int n, double opacity, double width)
+	{
+		context.setLineWidth(width);
+		context.setStrokeStyle(CssColor.make(Util.ColorValuesCSS[it.getColor()]));
+		context.setGlobalAlpha(opacity); //fully opaque
+		context.beginPath();
+		context.moveTo(longToX(it.getData()[0]), latToY(it.getData()[1]));
+		
+		for(int ndx = 1; ndx < n; ndx++)
+			context.lineTo(longToX(it.getData()[ndx*2]), latToY(it.getData()[ndx*2+1]));
+		
+		context.stroke();
+	}
+	
+	private void drawPoly(Constraint it, Context2d context, int n, double opacity, double width)
+	{
+		context.setLineWidth(width);
+		context.setFillStyle(CssColor.make(Util.ColorValuesCSS[it.getColor()]));
+		context.setStrokeStyle(CssColor.make(Util.ColorValuesCSS[it.getColor()]));
+		context.setGlobalAlpha(opacity);
+		context.beginPath();
+		context.moveTo(longToX(it.getData()[0]), latToY(it.getData()[1]));
+		
+		for(int ndx = 1; ndx < n; ndx++)
+			context.lineTo(longToX(it.getData()[ndx*2]), latToY(it.getData()[ndx*2+1]));
+		
+		context.closePath();
+		context.stroke();
+		context.fill();
+	}
+	
+	private double metersToPixels(double dist)
+	{
+		return (dist / AppGlobal.METERS_PER_DEGREE) * getPixelsPerDegree();
+	}
+	
+	private double getPixelsPerDegree()
+	{
+		return ((m_Width / m_ViewArea[2]) + (m_Height / m_ViewArea[3])) / 2.0;
+	}
+	
+	private int longToX(double lon)
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::longToX, long="+lon);
+		
+		double degLonPerWidth = m_ViewArea[2] / m_Width;	//m_ViewArea[2] is width in long
+		double diffInLon = lon - m_ViewArea[0];				//m_ViewArea[0] is left long
+		double x = diffInLon / degLonPerWidth;
+		
+		return (int)x;
+	}
+	
+	private int latToY(double lat)
+	{
+		if(DEBUGGING)
+			Trace.println("MapLayers::latToY, lat="+lat);
+		
+		double degLatPerHeight = m_ViewArea[3] / m_Height;	//m_ViewArea[3] is height in lat
+		double diffInLat = m_ViewArea[1] - lat;				//m_ViewArea[1] is top lat
+		double y = diffInLat / degLatPerHeight;
+		
+		return (int)y;
+	}
+}

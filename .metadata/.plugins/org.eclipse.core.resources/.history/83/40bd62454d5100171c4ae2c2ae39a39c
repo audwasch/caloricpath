@@ -1,0 +1,519 @@
+package com.caloricpath.server;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.RandomAccessFile;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Set;
+
+import com.caloricpath.shared.AppGlobal;
+import com.rpc.shared.SplitString;
+import com.rpc.shared.Trace;
+
+public class SatelliteFileSet 
+{
+	private static final boolean DEBUGGING=false;
+	
+	public final float NO_DATA_VALUE = -32768.0f;
+
+	private final int HEADER_OFFSET = 0;
+	private final int SAMPLE_BYTES = 4;
+	
+	private String m_FileName="";
+	private int m_FileSamples;
+	private int m_FileLines;
+	
+	private Double[] m_FileGeoInfo;
+	private Double[] m_FileCenter; /* Latitude, Longitude in degrees */
+	private Double[] m_FileDegrees; /* Height, Width in degrees */
+	private Double[] m_FileMiles; /* Height, Width in miles (est.) */
+	private Double m_FileNorthLat; /* in degrees */
+	private Double m_FileSouthLat; /* in degrees */
+	private Double m_FileEastLong; /* in degrees */
+	private Double m_FileWestLong; /* in degrees */
+	private Double[] m_FocusCenter; /* Latitude, Longitude in degrees */
+	private Double[] m_FocusDegrees; /* Height, Width in degrees */
+	private Double[] m_FocusMiles; /* Height, Width in miles (est.) */
+	private Integer[] m_FocusTopLeftColRow; /* x,y of top left corner in columns/rows */
+	private Integer[] m_FocusWidthHeightColRow; /* width, height of focus area in columns/rows */
+	
+	public String getFileName() { return m_FileName; }
+	public int getFilePoints() { return getFileSamples() * getFileLines(); }
+	public int getFileSamples() { return m_FileSamples; }
+	public int getFileLines() { return m_FileLines; }
+	
+	public Double[] getFileGeoInfo() { return m_FileGeoInfo; }
+	public Double[] getFileCenter() { return m_FileCenter; } /* Latitude, Longitude in degrees */
+	public Double[] getFileDegrees() { return m_FileDegrees; } /* Height, Width in degrees */
+	public Double[] getFileMiles() { return m_FileMiles; } /* Height, Width in miles */
+	public Double getFileNorthLat() { return m_FileNorthLat; } /* in degrees */
+	public Double getFileSouthLat() { return m_FileSouthLat; } /* in degrees */
+	public Double getFileEastLong() { return m_FileEastLong; } /* in degrees */
+	public Double getFileWestLong() { return m_FileWestLong; } /* in degrees */
+	public Double[] getFocusCenter() { return m_FocusCenter; } /* Latitude, Longitude in degrees */
+	public Double[] getFocusDegrees() { return m_FocusDegrees; } /* Height, Width in degrees */
+	public Double[] getFocusMiles() { return m_FocusMiles; } /* Height, Width in miles */
+	public Integer[] getFocusTopLeftColRow() { return m_FocusTopLeftColRow; } /* Top left corner in col, row */
+	public Integer[] getFocusWidthHeightColRow() { return m_FocusWidthHeightColRow; } /* Width, height in cols, rows */
+	
+	private String getHeaderPath() { return AppGlobal.SERVER_SATELLITE_PATH +  getFileName() +".hdr"; }
+	
+	public String getElevationPath() { return AppGlobal.SERVER_SATELLITE_PATH +  getFileName() + ".img"; }
+	
+	public SatelliteFileSet() 
+	{
+	}
+	
+	public void setFileName(String newValue) throws Exception
+	{
+		if(newValue==null) 
+			newValue="";
+
+		if(DEBUGGING)
+			Trace.println("SatelliteFileSet::setFileName(), newValue=["+newValue+"]");	
+		
+		if( ! newValue.equals(m_FileName) )
+		{
+			m_FileName = newValue;
+			try
+			{
+				scanHeader();
+				scanElevationFile();
+			}
+			catch(Exception e)
+			{
+				Trace.println("SatelliteFileSet::setFileName(), exception: " + e.getMessage() );
+				throw e;
+			}
+		}
+	}
+
+	private void scanElevationFile() throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("SatelliteFileSet::scanElevationFile()");
+		
+		File fd = new File( getElevationPath() );
+
+		if( fd.length() < HEADER_OFFSET + getFilePoints() * SAMPLE_BYTES )
+			throw new Exception("[Elevation_File_Too_Small]");
+	}
+	
+	public void setFocusCenter( Double[] newValue)
+	{
+		if(DEBUGGING)
+		{
+			String str = SplitString.formArrayValue(newValue);
+			Trace.println("SatelliteFileSet::setFocusCenter(), newValue="+str);
+		}
+		
+		m_FocusCenter=newValue;
+	}
+	
+	private final double MILES_PER_DEGREE_LATITUDE = 69.0; /* rough estimate */
+	private final double MILES_PER_DEGREE_LONGITUDE_AT_EQUATOR = 69.172;
+	
+	public void setFocusMiles( Double[] newValue ) 
+	{ 
+		if(DEBUGGING)
+		{
+			String str = SplitString.formArrayValue(newValue);
+			Trace.println("SatelliteFileSet::setFocusMiles(), newValue="+str);
+		}
+		
+		m_FocusMiles=newValue; 
+
+		double focusHeightDegrees = newValue[0] / MILES_PER_DEGREE_LATITUDE;
+		
+		double latitudeRadians = getFileCenter()[0]*2.0*Math.PI/360.0;
+		double milesPerDegreeLongitudeAtCenter = MILES_PER_DEGREE_LONGITUDE_AT_EQUATOR *  Math.cos(latitudeRadians);
+		double focusWidthDegrees = newValue[1] / milesPerDegreeLongitudeAtCenter;
+		
+		m_FocusDegrees = new Double[] { focusHeightDegrees, focusWidthDegrees };
+	}
+	
+	public void setFocusDegrees( Double[] newValue )
+	{
+		if(DEBUGGING)
+		{
+			String str = SplitString.formArrayValue(newValue);
+			Trace.println("SatelliteFileSet::setFocusDegrees(), newValue="+str);
+		}
+		
+		m_FocusDegrees=newValue;
+		
+		double focusHeightMiles = newValue[0] * MILES_PER_DEGREE_LATITUDE;
+		
+		double latitudeRadians = getFileCenter()[0]*2.0*Math.PI/360.0;
+		double milesPerDegreeLongitudeAtCenter = MILES_PER_DEGREE_LONGITUDE_AT_EQUATOR * Math.cos(latitudeRadians);
+		double focusWidthMiles = newValue[1] * milesPerDegreeLongitudeAtCenter;
+		
+		m_FocusMiles = new Double[] { focusHeightMiles, focusWidthMiles };
+	}
+	
+	private void scanHeader() throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("SatelliteFileSet::scanHeader()");
+		
+		m_FileSamples=0;
+		m_FileLines=0;
+		m_FileGeoInfo=null;
+		m_FileCenter=null;
+		m_FileDegrees=null;
+		m_FileMiles=null;
+		m_FocusCenter=null;
+		m_FocusDegrees=null;
+		m_FocusMiles=null;
+		m_FocusTopLeftColRow=null;
+		m_FocusWidthHeightColRow=null;
+		
+		HashMap<String,String> header = scanHeaderFile( getHeaderPath() );
+		
+		if(DEBUGGING)
+		{ 
+			Set<String> keySet = header.keySet();
+			for(String key : keySet )
+				Trace.println("| Key["+key+"] = [" + header.get(key) + "]");	
+		}
+		
+		int numberSamples = Integer.parseInt( header.get("samples") );
+		int numberLines = Integer.parseInt( header.get("lines") );
+		
+		String[] items = header.get("map info").split(",");
+/* Geographic Lat/Lon,4142.5,6642.5,146.708808699655,-6.113618325711268,1.2603363436196886E-4,1.2603363436196886E-4,WGS84,units=Degrees */
+		
+		ArrayList<Double> found = new ArrayList<Double>();
+		for( String str : items )
+		{
+			try { found.add( Double.parseDouble(str) ); } catch(Exception e) {}
+		}
+		
+		if( found.size()<6 )
+			throw new Exception("[Insufficient_Geography_Info]");
+		
+		Double[] geoInfo = new Double[found.size()];
+		for( int n=0; n<found.size(); n++ )
+			geoInfo[n] = found.get(n);
+		
+		double pixelX         = geoInfo[0]-1.0;    /* pixelX and pixelY start with "1" in header file, */
+		double pixelY         = geoInfo[1]-1.0;    /* so subtract one to make zero-based. */
+		double pixelLongitude = geoInfo[2];        /* Lat/Lon matching pixel location specified above. */
+		double pixelLatitude  = geoInfo[3];
+		double pixelSizeX     = geoInfo[4];
+		double pixelSizeY     = geoInfo[5];
+		
+		if(DEBUGGING)
+			Trace.println("pixelX="+pixelX+", pixelY="+pixelY+", pixelLong="+pixelLongitude+", pixelLat="+pixelLatitude+", pixelSizeX="+pixelSizeX+", pixelSizeY="+pixelSizeY);
+			
+		double geoWidth = (double) numberSamples * pixelSizeX ;
+		double geoHeight = (double) numberLines * pixelSizeY ;
+	
+//		double topLatitude = pixelLatitude - (pixelY*pixelSizeY);
+		double topLatitude = pixelLatitude + (pixelY*pixelSizeY);
+		double leftLongitude = pixelLongitude - (pixelX*pixelSizeX) ;
+		
+		m_FileNorthLat = topLatitude;
+		m_FileWestLong = leftLongitude;
+		
+//		m_FileSouthLat = topLatitude + (double) numberLines * pixelSizeY;
+		m_FileSouthLat = topLatitude - (double) numberLines * pixelSizeY;
+		m_FileEastLong = leftLongitude + (double) numberSamples * pixelSizeX;
+		
+//		double geoCenterLatitude = topLatitude + ((double) numberLines/2.0) * pixelSizeY ;
+		double geoCenterLatitude = topLatitude - ((double) numberLines/2.0) * pixelSizeY ;
+		double geoCenterLongitude = leftLongitude + ((double) numberSamples/2.0) * pixelSizeX ;
+		
+		if(DEBUGGING)
+			Trace.println("geoCenterLat="+geoCenterLatitude+", geoCenterLon="+geoCenterLongitude);
+		
+		/* fix in case roll-over boundary */
+		geoCenterLatitude = Math.max(-90.0,  Math.min(90.0,  geoCenterLatitude));
+		if( geoCenterLongitude < -180.0 ) geoCenterLongitude += 360.0 ;
+		if( geoCenterLongitude > 180.0 ) geoCenterLongitude -= 360.0 ;
+
+		double milesHeightEstimate = geoHeight * MILES_PER_DEGREE_LATITUDE;
+		
+		double latitudeRadians = geoCenterLatitude*2.0*Math.PI/360.0;
+		double milesPerDegreeAtCenter = MILES_PER_DEGREE_LONGITUDE_AT_EQUATOR * 
+				Math.cos(latitudeRadians);
+		double milesWidthEstimate = milesPerDegreeAtCenter * geoWidth;
+		
+		/* all ready, assign to member variables */
+		
+		m_FileDegrees = new Double[] { geoHeight, geoWidth };
+		m_FileCenter = new Double[] { geoCenterLatitude, geoCenterLongitude };
+		m_FileMiles = new Double[] {  milesHeightEstimate, milesWidthEstimate };
+		m_FocusDegrees = new Double[] { geoHeight, geoWidth };
+		m_FocusCenter = new Double[] { geoCenterLatitude, geoCenterLongitude };
+		m_FocusMiles = new Double[] {  milesHeightEstimate, milesWidthEstimate };
+		m_FocusTopLeftColRow = new Integer[] { 0, 0 };
+		m_FocusWidthHeightColRow = new Integer[] { numberSamples, numberLines };
+		m_FileSamples = numberSamples;
+		m_FileLines = numberLines;
+		m_FileGeoInfo = geoInfo;
+	}
+	
+	public Integer[] getDataDimensions( int maxPoints ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("SatelliteFileSet::getDataDimensions_Only(), maxPoints="+maxPoints);
+		
+		Double focusColumns = ((double)m_FileSamples * m_FocusMiles[1]) / m_FileMiles[1] ;
+		if(DEBUGGING)
+			Trace.println("| m_FileSamples="+m_FileSamples+", FocusMiles[1]="+ m_FocusMiles[1]+", FileMiles[1]="+m_FileMiles[1]+", focusColumns="+focusColumns );
+		
+		Double focusRows = ((double)m_FileLines * m_FocusMiles[0]) / m_FileMiles[0] ;
+		if(DEBUGGING)
+			Trace.println("| m_FileLines="+m_FileLines+", FocusMiles[0]="+ m_FocusMiles[0]+", FileMiles[0]="+m_FileMiles[0]+", focusRows="+focusRows );
+		
+		return getDataDimensions( maxPoints, focusColumns.intValue(), focusRows.intValue() );
+	}
+	
+	private Integer[] getDataDimensions( int maxPoints, int widthColumns, int heightRows ) throws Exception
+	{
+		if(DEBUGGING)		
+			Trace.println("SatelliteFileSet::getDataDimensions(), maxPoints="+
+					maxPoints+", heightRows="+heightRows+", widthColumns="+ widthColumns
+					);
+		
+		if(widthColumns<1)
+			throw new Exception("[Width_Is_Invalid]");
+		
+		if(heightRows<1)
+			throw new Exception("[Height_Is_Invalid]");
+		
+		if(maxPoints<1)
+			throw new Exception("[MaxPoints_Is_Invalid]");
+		
+		maxPoints = Math.min(maxPoints, widthColumns*heightRows);
+		
+		double W = (double) widthColumns;
+		double H = (double) heightRows;
+		double MAX = (double) maxPoints;
+		
+		double xF = Math.sqrt( (W*H)/MAX );
+		int rows = (int) Math.floor(H/xF);
+		int columns = (int) Math.floor(W/xF);
+		
+		rows = Math.min(heightRows, Math.max(1, rows));
+		columns = Math.min(widthColumns, Math.max(1, columns));
+		
+		Integer[] retn = new Integer[] { columns, rows };
+		
+		if(DEBUGGING)
+		{
+			String str = SplitString.formArrayValue(retn);
+			Trace.println("SatelliteFileSet::getDataDimensions(), retn=" + str);
+		}
+		
+		return retn;
+	}
+	
+	public Float[] getData( int maxPoints ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("SatelliteFileSet::getData(), maxPoints="+maxPoints );
+		
+		Double focusColumns = ((double)m_FileSamples * m_FocusMiles[1]) / m_FileMiles[1] ;
+		Double fileWidthDegrees = m_FileDegrees[1];
+		double fileLeftDegrees = m_FileCenter[1] - (fileWidthDegrees/2.0) ;
+		double focusWidthDegrees = m_FocusDegrees[1];
+		double focusLeftDegrees = m_FocusCenter[1] - (focusWidthDegrees/2.0) ;
+		Double focusLeftColumn = ((focusLeftDegrees - fileLeftDegrees) * (double)m_FileSamples) / fileWidthDegrees ;
+
+		if(DEBUGGING)
+			Trace.println("SatelliteFileSet::getData(), focusColumns="+focusColumns+
+				", fileWidthDegrees="+fileWidthDegrees+
+				", fileLeftDegrees="+fileLeftDegrees+
+				", focusWidthDegrees="+focusWidthDegrees+
+				", focusLeftDegrees="+focusLeftDegrees+
+				", focusLeftColumn="+focusLeftColumn
+				);
+
+		Double focusRows = ((double)m_FileLines * m_FocusMiles[0]) / m_FileMiles[0] ;
+		Double fileHeightDegrees = m_FileDegrees[0];
+		double fileTopDegrees = m_FileCenter[0] + (fileHeightDegrees/2.0) ;
+		double focusHeightDegrees = m_FocusDegrees[0];
+		double focusTopDegrees = m_FocusCenter[0] + (focusHeightDegrees/2.0) ;
+		Double focusTopRow = ((fileTopDegrees - focusTopDegrees) * (double)m_FileLines ) / fileHeightDegrees ;
+		
+		if(DEBUGGING)
+			Trace.println("SatelliteFileSet::getData(), focusRows="+focusRows+
+				", fileHeightDegrees="+fileHeightDegrees+
+				", fileTopDegrees="+fileTopDegrees+
+				", focusHeightDegrees="+focusHeightDegrees+
+				", focusTopDegrees="+focusTopDegrees+
+				", focusTopRow="+focusTopRow
+				);
+		
+		return getData( 
+			maxPoints, 
+			focusTopRow.intValue(), 
+			focusLeftColumn.intValue(), 
+			focusColumns.intValue(), 
+			focusRows.intValue() 
+			);
+	}
+
+	private Float[] getData( 
+			int maxPoints, 
+			int topRow, 
+			int leftColumn, 
+			int widthColumns, 
+			int heightRows ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("SatelliteFileSet::getData(), maxPoints="+maxPoints+
+				", topRow="+topRow+
+				", leftColumn="+leftColumn+
+				", widthColumns="+widthColumns+
+				", heightRows=" + heightRows 
+				);
+		
+		m_FocusTopLeftColRow = new Integer[] { leftColumn, topRow };
+		m_FocusWidthHeightColRow = new Integer[] { widthColumns, heightRows };
+		
+		Integer[] dimensions = getDataDimensions(maxPoints,widthColumns,heightRows);
+		Float[] retn = null;
+		
+		MappedByteBuffer map =null;
+		RandomAccessFile fd = null;
+		
+		try
+		{
+			fd = new RandomAccessFile( new File( getElevationPath()), "r" );
+			map = fd.getChannel().map(FileChannel.MapMode.READ_ONLY,HEADER_OFFSET,getFilePoints() * SAMPLE_BYTES );
+			fd.close();
+			fd=null;
+			
+			retn = new Float[ dimensions[0] * dimensions[1] ];
+
+			for( int row=0, n=0; row<dimensions[1]; row++ )
+			{
+				int fileRow = topRow + (heightRows * row) / dimensions[1];	
+				
+				for( int col=0; col<dimensions[0]; col++, n++ )
+				{
+					int fileColumn = leftColumn + (widthColumns * col) / dimensions[0];
+					
+					if( fileColumn<0 || fileColumn>=getFileSamples() || fileRow<0 || fileRow>=getFileLines() )
+						retn[n] = NO_DATA_VALUE;
+					else
+					{
+						int fileIndex = fileRow * getFileSamples() + fileColumn; 
+						retn[n] = map.asFloatBuffer().get(fileIndex);
+					}	
+				}
+			}
+		}
+		finally
+		{
+			if(fd!=null) {fd.close(); fd=null; }
+			map=null;
+			System.gc();
+		}
+		
+		return retn;
+	}
+	
+	private HashMap<String,String> scanHeaderFile( String filePath ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("SatelliteFileSet::scanHeaderFile(), filePath="+filePath);
+		
+		String key="";
+		String value="";
+		int state=0; /* Start-state */
+		int c;
+		HashMap<String,String> retn = new HashMap<String,String>();
+
+		BufferedReader fd = new BufferedReader( new FileReader( filePath) );	
+		try
+		{
+			while ( (c=fd.read()) != -1 )
+			{
+				if( c== '\r' )
+					continue;
+				
+				switch( state )
+				{
+				case 0:
+					if( c == '=' )
+						state = 1;
+					else if( c == '\n' )
+					{
+						if( key.trim().length()>0 )
+							retn.put(key.trim(),value.trim());
+						value = key = "";
+					}
+					else
+						key += String.valueOf(Character.toChars(c));
+					break;
+					
+				case 1:
+					if( c == '\n' )
+					{
+						if( key.trim().length()>0)
+							retn.put(key.trim(),value.trim());
+						value = key = "";
+						state = 0;
+					}
+					else if( c == '{' )
+						state = 2;
+					else if( c != ' ' )
+					{
+						value += String.valueOf(Character.toChars(c));
+						state = 4;
+					}
+					break;
+					
+				case 2:
+					if( c == '}' )
+						state = 3;
+					else
+						value += String.valueOf(Character.toChars(c));
+					break;
+					
+				case 3:
+					if( c == '\n' )
+					{
+						retn.put(key.trim(),value.trim());
+						value = key = "";
+						state = 0;
+					}
+					break;
+					
+				case 4:
+					if( c=='\n' )
+					{
+						retn.put(key.trim(),value.trim());
+						value = key = "";
+						state = 0;
+					}
+					else
+						value += String.valueOf(Character.toChars(c));
+				}
+			}
+
+			key = key.trim();
+			if( key.length()>0 )
+				retn.put(key,value.trim());
+		}
+		catch( Exception e )
+		{
+			Trace.println("SatelliteFileSet::scanHeaderFile(), exception="+e.getMessage());
+			throw e;
+		}
+		finally
+		{
+			fd.close();
+		}
+		
+		return retn;
+	}
+}

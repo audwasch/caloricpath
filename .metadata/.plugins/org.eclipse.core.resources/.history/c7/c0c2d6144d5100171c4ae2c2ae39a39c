@@ -1,0 +1,1651 @@
+package com.caloricpath.server;
+
+import java.io.BufferedWriter;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.RandomAccessFile;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.text.DecimalFormat;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.PriorityQueue;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import com.caloricpath.shared.AppGlobal;
+import com.caloricpath.shared.utility.BitArray;
+import com.caloricpath.shared.utility.Util;
+import com.rpc.shared.Trace;
+
+public class PathComputation
+{
+	private boolean DEBUGGING = false;
+	//private int OVERRIDE_TYPE=-1; /* set to -1 to NOT use override. Otherwise set to algorithm type */
+	
+	static final boolean WITH_VERTICES_K_IN_PROGRESS=true;
+	static final boolean WITH_ELAPSED_TIME_IN_PROGRESS=true;
+	static final boolean WITH_FILE_BASED_PREVIOUS_TRACKING=true;
+	
+	private static final int HEADER_OFFSET = 0;
+	private static final float NO_DATA_VALUE = -32768.0f;
+	private static final float WATER_DATA_VALUE = 0.0f;
+	
+	private static final double CM_TO_IN = 0.393701;
+	private static final double KG_TO_LBS = 2.20462;
+	
+	private static final DecimalFormat latLonFormat = new DecimalFormat("0.00000");
+	//private static final DecimalFormat twoDigits = new DecimalFormat("0.00");
+	private static final DecimalFormat zeroDigits = new DecimalFormat("0");
+	private static final DecimalFormat twoDigits = new DecimalFormat("00");
+	
+	private PathResultCollectionServer m_Results;
+	private PathStatusCollectionServer m_Status;
+
+	private int m_Id;
+	private double m_Length;
+	private double m_WeightSum;
+	private double m_StartLat;
+	private double m_StartLon;
+	private double m_EndLat;
+	private double m_EndLon;
+	private boolean m_RestrictToWhiteboxIfExists=false;
+	
+	private boolean m_IsRunning;
+	private boolean m_IsPreparingResults;
+	private SatFileServer m_Sat;
+	private int m_VerticesK;
+	private long m_BeginTimeMS;
+	private long m_EndTimeMS;
+	
+	private int m_StartIndexX;
+	private int m_StartIndexY;
+	private int m_EndIndexX;
+	private int m_EndIndexY;
+	private double m_MaxProgress;
+	private int m_Algorithm;
+	
+	private int m_LeftCol=-1;
+	private int m_RightCol=-1;
+	private int m_TopRow=-1;
+	private int m_BottomRow=-1;
+	
+	private static RandomAccessFile m_AccessFd=null; /* static, shared among all threads */
+	private static MappedByteBuffer m_AccessMap=null; /* static, shared among all threads */
+	private static int m_AccessCount=0; /* static, shared among all threads */
+	
+	private boolean m_IsAccessible=false; /* not static */
+	
+	public int getId() { return m_Id; }
+	public double getStartLat() { return m_StartLat; }
+	public double getStartLon() { return m_StartLon; }
+	public double getEndLat() { return m_EndLat; }
+	public double getEndLon() { return m_EndLon; }
+	public boolean getIsRunning() { return m_IsRunning;}
+	public boolean getRestrictToWhiteboxIfExists() { return m_RestrictToWhiteboxIfExists; }
+	public int getAlgorithm() { return m_Algorithm; }
+	
+	//===============================================================================
+	// Data structures for Dijkstra's algorithm
+	
+	private class DistPrev 
+	{ 
+		private float m_Dist;
+		private int m_Prev;
+		public DistPrev(float dist,int prev){ setDist(dist); setPrev(prev); }
+		public DistPrev(float dist) {setDist(dist); setPrev(-1); }
+		public float getDist() { return m_Dist; }
+		public int getPrev() { return m_Prev; }
+		public void setPrev(int newValue){m_Prev=newValue;}
+		public void setDist(float newValue){m_Dist=newValue;}
+	}
+	
+	private class compareIndirect implements Comparator<Integer>
+	{
+		@Override
+		public int compare(Integer i1, Integer i2)  /* i1, i2 are vertex index values */
+		{
+			float r1 = DP.containsKey(i1) ? DP.get(i1).getDist() : Float.POSITIVE_INFINITY ;
+			float r2 = DP.containsKey(i2) ? DP.get(i2).getDist() : Float.POSITIVE_INFINITY ;
+			return Float.compare(r1,r2);
+		}
+	}
+
+	private PriorityQueue<Integer> Q = new PriorityQueue<Integer>(10000,new compareIndirect() );
+	private HashMap<Integer,DistPrev> DP = new HashMap<Integer,DistPrev>();
+	private BitArray NotQ = new BitArray();
+	private HashMap<Integer,Integer> POnly = new HashMap<Integer,Integer>();
+	DataOutputStream POnlyFile=null;
+	
+	//===============================================================================
+	// Local helper functions
+	
+	private void Lock() { ImageServiceImpl.Lock(); }
+	private void Unlock() { ImageServiceImpl.Unlock(); }
+	private static double sqr(double x) { return x*x; }
+	private String getTempFilename()  {return AppGlobal.SERVER_SATELLITE_PATH + "path"+getId()+".tmp" ;}
+	private String getCsvFilename() {return AppGlobal.SERVER_SATELLITE_PATH + "path"+getId()+"_"+res()+".csv" ;}
+	private String res() {return zeroDigits.format(Math.floor(m_Sat.FileStatus.getValue().getResolutionLatitudeInMeters()))+"m"; }
+
+	//===============================================================================
+	// Timer and Thread objects
+	
+	private Timer m_Timer = new Timer();
+	
+	private TimerTask m_TimerTask = new TimerTask() 
+	{
+		@Override
+		public void run() {tick();}
+	};
+	
+	Thread m_Thread = new Thread()
+	{
+		@Override
+		public void run(){threadproc();}
+	};
+	
+	//===============================================================================
+	// Constructor
+	
+	public PathComputation(
+		PathResultCollectionServer res,
+		PathStatusCollectionServer stat,
+		SatFileServer sat,
+		int id, 
+		double startLat, 
+		double startLon,
+		double endLat, 
+		double endLon,
+		int algorithm
+		)
+	{
+		if(DEBUGGING)
+			Trace.println("PathComputation::PathComputation(), id="+id);
+		
+		m_Id = id;
+		m_Length = 0.0;
+		m_WeightSum = 0.0;
+		m_StartLat = startLat;
+		m_StartLon = startLon;
+		m_EndLat = endLat;
+		m_EndLon = endLon;
+		m_Results = res;
+		m_Status = stat;
+		m_Sat = sat;
+		m_Algorithm = algorithm;
+		m_VerticesK=0;
+		m_BeginTimeMS=0;
+		m_EndTimeMS=0;
+
+		m_StartIndexY = ImageServiceImpl.getSat().File_LatToRow(m_StartLat);
+		m_StartIndexX = ImageServiceImpl.getSat().File_LonToCol(m_StartLon);
+		m_EndIndexY = ImageServiceImpl.getSat().File_LatToRow(m_EndLat);
+		m_EndIndexX = ImageServiceImpl.getSat().File_LonToCol(m_EndLon);
+		m_MaxProgress = 0.0;
+
+		if(DEBUGGING)
+		{
+			Trace.println(getId()+":PATH COMPUTATION:");
+			Trace.println(" | Start at: Lat="+startLat+", Lon="+startLon+", RC=("+m_StartIndexY+","+m_StartIndexX+")");
+			Trace.println(" | End at: Lat="+endLat+", Lon="+endLon+", RC=("+m_EndIndexY+","+m_EndIndexX+")");
+		}
+	}
+	
+	public void start()
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println(getId()+":PathComputation::start()");		
+
+			if( (m_StartLat!=0 || m_StartLon!=0 ) &&
+				(m_EndLat!=0 || m_EndLon!=0 ) &&
+				(m_StartLat!=m_EndLat || m_StartLon!=m_EndLon) )
+			{
+				cancel();
+				publishStatus( "Start" );
+
+				m_VerticesK = 0;
+				m_Length = 0.0;
+				m_WeightSum = 0.0;
+				m_MaxProgress = 0.0;
+				m_BeginTimeMS = System.currentTimeMillis();
+				m_EndTimeMS = 0;
+
+				startAccessingFile();
+				SetupPath();
+			
+				m_IsRunning=true;
+				m_IsPreparingResults=false;
+				m_Timer.scheduleAtFixedRate(m_TimerTask, 0, 1*1000);
+				
+				m_Thread.start();
+			}
+			else
+				publishStatus( "Empty" );	
+		}
+		catch( Exception e )
+		{
+			Trace.println(getId()+":PathComputation::start(), exception: " + e.getMessage() );
+			finishedAccessingFile();
+			cancel();
+			publishStatus( "Err: " + e.getMessage() );
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+
+	RandomAccessFile PRandomFile;
+	
+	private void threadproc()
+	{
+		Trace.println(getId()+": PathComputation::threadproc()");
+		try
+		{
+			Trace.println("CALCULATE_PATH: " + getId() );
+			
+			if( WITH_FILE_BASED_PREVIOUS_TRACKING )
+			{
+				if(PRandomFile!=null)
+				{
+					try { PRandomFile.close();} catch (IOException e1) {}
+					PRandomFile=null;
+				}
+
+				File x = new File(getTempFilename());
+				x.delete();
+				
+				PRandomFile = new RandomAccessFile(new File(getTempFilename()),"rw");
+			}
+			else
+			{
+				if(POnlyFile!=null)
+				{
+					try { POnlyFile.close();} catch (IOException e1) {}
+					POnlyFile=null;
+				}
+				
+				File x = new File(getTempFilename());
+				x.delete();
+
+				POnlyFile = new DataOutputStream(new FileOutputStream (new File(getTempFilename())));
+			}
+			
+			Trace.println("BUILD_PATH");
+			BuildPath();
+			
+			Trace.println("PREPARE_RESULTS");
+			m_IsPreparingResults = true;
+			publishStatus("Preparing Results");
+			
+			if( POnlyFile!=null )
+			{
+				
+				Trace.println("PROCESS_PONLY");
+				
+				//Trace.println(getId()+": Close temporary file");
+				//debugMessage();
+				
+				try { POnlyFile.close();} catch (IOException e1) {}
+				POnlyFile=null;
+				
+				//Trace.println(getId()+": Unallocate some memory tables: Q="+
+				//		Q.size()+", NotQ="+NotQ.size()+", POnly="+POnly.size()
+				//		);
+				
+				Q.clear();
+				NotQ.clear();
+				POnly.clear();
+				
+				DataInputStream inFile=null;
+				File x=null;
+				
+				//Trace.println(getId()+": Read temporary file into POnly");
+				
+				try
+				{
+					x = new File(getTempFilename());
+					inFile = new DataInputStream(new FileInputStream(x));
+					
+					int count = (int)(x.length()/(Integer.BYTES*2l));
+					
+					//Trace.println(getId()+": Temporary file contains: " + count );
+					
+					Trace.println(getId()+": Transfering into POnly");
+					
+					for( int n=0; n<count; n++ )
+					{
+						int index=inFile.readInt();
+						int prev=inFile.readInt();
+						POnly.put(index, prev);
+					}
+					
+					inFile.close();
+					inFile=null;
+					
+					Trace.println(getId()+": POnly now contains: " + POnly.size() );
+					
+					//Trace.println(getId()+": Remove temporary file");
+					
+					x.delete();
+				}
+				catch(Exception e)
+				{
+					if(inFile!=null)
+						inFile.close();
+					inFile=null;
+					if(x!=null)
+					{
+						x.delete();
+					}
+				}
+			}
+			
+			PublishResults();
+			finishedAccessingFile();
+			finish(); 
+			
+			if( PRandomFile!=null )
+			{
+				try { PRandomFile.close();} catch (IOException e1) {}
+				PRandomFile=null;
+				File x = new File(getTempFilename());
+				x.delete();
+			}
+			
+			/* Thread.sleep(1); */
+		}
+		catch(InterruptedException e)
+		{
+			Trace.println(getId()+":PathComputation::threadproc(), interrupted: " + e.getMessage() );
+
+			if( POnlyFile!=null )
+			{
+				try { POnlyFile.close();} catch (IOException e1) {}
+				POnlyFile=null;
+				File x = new File(getTempFilename());
+				x.delete();
+			}
+			
+			if( PRandomFile!=null )
+			{
+				try { PRandomFile.close();} catch (IOException e1) {}
+				PRandomFile=null;
+				File x = new File(getTempFilename());
+				x.delete();
+			}
+			
+			finishedAccessingFile();
+			finish(); 
+			publishStatus("Cancel");
+		}
+		catch(Exception e)
+		{
+			Trace.println(getId()+":PathComputation::threadproc(), exception: " + e.getMessage() );
+
+			if( POnlyFile!=null )
+			{
+				try { POnlyFile.close();} catch (IOException e1) {}
+				POnlyFile=null;
+				File x = new File(getTempFilename());
+				x.delete();
+			}
+			
+			if( PRandomFile!=null )
+			{
+				try { PRandomFile.close();} catch (IOException e1) {}
+				PRandomFile=null;
+				File x = new File(getTempFilename());
+				x.delete();
+			}
+			
+			finishedAccessingFile();
+			finish(); 
+			publishStatus("Error");
+		}
+		Trace.println(getId()+": PathComputation::threadproc completed");
+	}
+	
+	public void tick()
+	{
+		Lock();
+		try
+		{	
+			if( m_IsRunning && !m_IsPreparingResults )
+				publishStatus( getProgress() );
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	public void finish() /* always called from background task */
+	{
+		Lock();
+	
+		try
+		{
+			if(DEBUGGING)
+				Trace.println(getId()+":PathComputation::finish()");	
+			
+			if( m_IsRunning==true )
+			{
+				m_IsRunning=false;
+				m_IsPreparingResults=false;
+				m_Timer.cancel();
+				m_EndTimeMS = System.currentTimeMillis();				
+			}
+			cleanAll();
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	public void cancel() /* called by foreground thread */
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println(getId()+":PathComputation::cancel()");
+			
+			if( m_IsRunning==true )
+			{
+				m_IsRunning=false;
+				m_Timer.cancel();
+				m_EndTimeMS = 0;	
+				publishStatus("Cancel");
+				
+				m_Thread.interrupt();
+					
+				int numLocks = ImageServiceImpl.getNumLocks();
+				for( int n=0; n<numLocks; n++ )
+					Unlock();
+				m_Thread.join();
+				
+				for( int n=0; n<numLocks; n++ )
+					Lock();
+			}
+			cleanAll();
+		}
+		catch (Exception e)
+		{
+			Trace.println(getId()+":PathComputation::cancel(), exception: " + e.getMessage() );
+			cleanAll();
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+
+	private void publishStatus(String s)
+	{	
+		Lock();
+		try
+		{
+			PathStatusServer stat = m_Status.LookupById(m_Id);
+			if(stat != null)
+			{
+				stat.setStatus(s);
+				m_Status.AnnounceChanges();
+			}
+			else
+			{
+				Trace.println("Unable to Find "+m_Id);
+				
+				/* not sure about this */
+				ImageServiceImpl.getPathProcessor().Cancel(m_Id);
+			}
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+
+	public String elapsedTimeMS( long milliseconds )
+	{
+		final Long MILLISECONDS_PER_SECOND=1000L;
+		final Long MILLISECONDS_PER_MINUTE=MILLISECONDS_PER_SECOND*60L;
+		final Long MILLISECONDS_PER_HOUR=MILLISECONDS_PER_MINUTE*60L;
+		
+		long hours = milliseconds / MILLISECONDS_PER_HOUR;
+		milliseconds -= hours * MILLISECONDS_PER_HOUR;
+		
+		long minutes = milliseconds / MILLISECONDS_PER_MINUTE;
+		milliseconds -= minutes * MILLISECONDS_PER_MINUTE;
+		
+		long seconds = milliseconds / MILLISECONDS_PER_SECOND ;
+		
+		 String msg = ":"+twoDigits.format(seconds);
+		 
+		 if( hours>0 || minutes>0 )
+			 msg = twoDigits.format(minutes) + msg;
+		 
+		 if( hours>0 )
+			 msg = Long.toString(hours)+":"+msg;
+		 
+		return msg;
+	}
+	
+	public String getProgress()
+	{	
+		String retn = zeroDigits.format(Math.floor(m_MaxProgress*100.0)) + "%";
+
+		retn += " (";
+		
+		if( WITH_VERTICES_K_IN_PROGRESS )
+			retn += m_VerticesK +"K ";
+		
+		if( WITH_ELAPSED_TIME_IN_PROGRESS && m_BeginTimeMS!=0.0 && m_EndTimeMS!=0.0 )
+			retn +=  elapsedTimeMS( m_EndTimeMS - m_BeginTimeMS ) + " ";
+		
+		retn = retn.trim()+")";
+
+		return retn  ;
+	}
+
+	private void cleanAll()
+	{
+		if(DEBUGGING)
+			Trace.println(getId()+":PathComputation:cleanAll()");
+		
+		Lock();
+		try
+		{
+			Trace.println(getId()+": Cleaning objects, Q="+
+					Q.size()+", NotQ="+NotQ.size()+", DP="+DP.size()+", POnly="+POnly.size()
+					);
+			
+			Q.clear();
+			DP.clear();
+			NotQ.clear();
+			POnly.clear();
+			// too expensive:   System.gc(); /* garbage collect */
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	private void SetupPath() throws Exception
+	{
+		Lock();
+		try
+		{
+			if(DEBUGGING)
+				Trace.println(getId()+":PathComputation:SetupPath()");
+			
+			m_LeftCol = 0;
+			m_TopRow = 0;
+			m_RightCol = m_Sat.FileStatus.getValue().getSamples()-1;
+			m_BottomRow = m_Sat.FileStatus.getValue().getLines()-1;
+			
+			if( getRestrictToWhiteboxIfExists() && 
+					ImageServiceImpl.getMap()!=null &&
+						ImageServiceImpl.getMap().RectangleData.getValue()!=null )
+			{
+				int left = ImageServiceImpl.getSat().File_LonToCol(ImageServiceImpl.getMap().RectangleData.getValue()[0]);
+				int top = ImageServiceImpl.getSat().File_LatToRow(ImageServiceImpl.getMap().RectangleData.getValue()[1]);
+				int right = ImageServiceImpl.getSat().File_LonToCol(ImageServiceImpl.getMap().RectangleData.getValue()[2]);
+				int bottom = ImageServiceImpl.getSat().File_LatToRow(ImageServiceImpl.getMap().RectangleData.getValue()[3]);
+				int height = bottom-top;
+				int width = right-left;
+
+				if( width*height>0 )
+				{
+//					Trace.println("Restricting to LATLON: L="+
+//						ImageServiceImpl.getMap().RectangleData.getValue()[0]+
+//						", T="+ImageServiceImpl.getMap().RectangleData.getValue()[1]+
+//						", R="+ImageServiceImpl.getMap().RectangleData.getValue()[2]+
+//						", B="+ImageServiceImpl.getMap().RectangleData.getValue()[3]
+//						);
+					
+					m_LeftCol = left;
+					m_TopRow = top;
+					m_RightCol = right;
+					m_BottomRow = bottom;
+				}
+			}
+	
+			int source = rowColumnToIndex(m_StartIndexY, m_StartIndexX);
+
+//			Trace.println(getId()+":PathComputation:SetupPath() Start_Index=" + source);
+					
+			int sink = rowColumnToIndex(m_EndIndexY, m_EndIndexX);
+
+//			Trace.println(getId()+":PathComputation:SetupPath() End_Index=" + sink);	
+			
+			if( source == sink )
+			{
+				Trace.println(getId()+":PathComputation:SetupPath() Start and End are equal " + source);
+				throw new Exception("Start<>End");
+			}
+			
+			if( !isInboundsAndValidData(m_StartIndexY, m_StartIndexX) )
+			{
+				Trace.println(getId()+":PathComputation:SetupPath() invalid Start");
+				throw new Exception("Invalid Start");
+			}
+			
+			if(!isInboundsAndValidData(m_EndIndexY, m_EndIndexX) )
+			{
+				Trace.println(getId()+":PathComputation:SetupPath() invalid End");
+				throw new Exception("Invalid End");
+			}
+			
+			cleanAll();
+			
+			NotQ.setMaximumSize(ImageServiceImpl.getSat().FileStatus.getValue().getPoints());
+
+//			Trace.println("Initializing QUEUE with one entry: source="+source);
+			
+			DP.put(source,new DistPrev(0.0f));
+			
+//			logThis("DP.put("+source+")=["+twoDigits.format(0.0)+"/"+0+"]");
+			
+			Q.add(source);
+		}
+		catch(Exception e)
+		{
+			cleanAll();
+			Trace.println("PathComputation::caught, e="+e.getMessage());
+			
+			throw e;
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	private void debugMessage()
+	{
+		long totalMem = Runtime.getRuntime().totalMemory();
+		long freeMem = Runtime.getRuntime().freeMemory();
+		long maxMem = Runtime.getRuntime().maxMemory();
+		
+		totalMem /= (1024*1024);
+		freeMem /= (1024*1024);
+		maxMem /= (1024*1024);
+		
+		Trace.println(getId()
+			+": VK:"+m_VerticesK
+			+", Mem Tot:"+totalMem
+			+", Free:"+freeMem
+			+", Max:"+maxMem
+			+", Q:"+Q.size()
+			+", NotQ:"+NotQ.size()
+			);
+	}
+	
+	private void BuildPath() throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println(getId()+":PathComputation:BuildPath()");
+		
+		int endVertex = rowColumnToIndex(m_EndIndexY, m_EndIndexX);
+		//int startVertex = rowColumnToIndex(m_StartIndexY, m_StartIndexX );
+		
+		int interval=0;
+		int cnt=0;
+		
+		while( !Q.isEmpty() )
+		{
+			cnt++;
+			
+			if( ((++interval)%1000)==0 )
+			{
+				m_VerticesK++;
+				m_EndTimeMS = System.currentTimeMillis();	
+				
+				if( DEBUGGING )
+					debugMessage();
+				
+				Thread.sleep(0,100);
+			}
+			
+			if( m_Thread.isInterrupted() )
+				throw new InterruptedException("background thread interrupted");
+			
+			int thisVertex = Q.poll();
+			int [] rowCol = indexToRowColumn(thisVertex);			
+
+			if( rowCol[1] == m_EndIndexX && rowCol[0] == m_EndIndexY )
+				m_MaxProgress = 1.0;
+			else
+			{			
+				/* calculate the ratio of distance from start-to-current over start-to-current + current-to_end. */
+				/* When this is 0.0, at starting.  When at 1.0, at ending. */
+				/* During process, current will walk all over satellite matrix of elevations, so keep track of the maximum such ratio. */
+				/* This ratio tends to get close to ending too quickly, so bend this ratio using a pcnt = (100^pcnt - 1)/99 */
+				/* This is a heuristic.  */
+				
+				double DistanceFromStartToCurrent =
+					Math.sqrt( sqr(m_StartIndexY-rowCol[0]) + sqr(m_StartIndexX-rowCol[1]) );
+				
+				double DistanceFromCurrentToEnd =
+						Math.sqrt( sqr(m_EndIndexY-rowCol[0]) + sqr(m_EndIndexX-rowCol[1] ) );
+
+				double numerator = DistanceFromStartToCurrent;
+				double denomonator = DistanceFromStartToCurrent + DistanceFromCurrentToEnd;
+				
+				double pcnt = (denomonator<=0.0)? 0.0 : (numerator/denomonator);
+				
+				final double SLOWERBASE=100.0;
+				pcnt = (Math.pow( SLOWERBASE, pcnt) - 1.0) /(SLOWERBASE-1.0);
+
+				/* cap at 98% until End is reached */
+				if( pcnt>0.98 ) pcnt=0.98; 
+				
+				if( pcnt>m_MaxProgress )
+					m_MaxProgress=pcnt;
+			}
+			
+			NotQ.add(thisVertex);
+			
+			if( thisVertex == endVertex )
+				break;				
+			
+			int[] visitRow = { rowCol[0]-1, rowCol[0],   rowCol[0]+1, rowCol[0]+1, rowCol[0]+1, rowCol[0], rowCol[0]-1, rowCol[0]-1 };
+			int[] visitCol = { rowCol[1]-1, rowCol[1]-1, rowCol[1]-1, rowCol[1],   rowCol[1]+1, rowCol[1]+1, rowCol[1]+1, rowCol[1] };
+			
+			DistPrev dp_u = DP.get(thisVertex);
+			
+			if( dp_u == null )
+			{
+				Trace.println("Vertex U["+thisVertex+"] is Missing from DP, cnt="+cnt);
+				throw new InterruptedException("internal failure");
+			}
+			
+			for( int ndx=0; ndx<8; ndx++ )
+			{
+				if( isInboundsAndValidData(visitRow[ndx],visitCol[ndx]) )
+				{
+					int index = rowColumnToIndex(visitRow[ndx],visitCol[ndx]) ;
+					if( Q.contains(index) || NotQ.contains(index)==false )
+					{			
+						double wgt = calculateWeightWithConstraints(thisVertex,index);
+						double alt = dp_u.getDist() + wgt;
+						
+						DistPrev dp_v = DP.get(index);
+						if( dp_v==null )
+						{
+							DP.put( index, new DistPrev((float)alt,thisVertex) );
+							
+							if( Q.contains(index) )
+								Q.remove(index);
+							
+							Q.add(index);
+						}
+						else if( alt < dp_v.getDist() )
+						{
+							dp_v.setDist((float)alt);
+							dp_v.setPrev(thisVertex);		
+							
+							if( Q.contains(index) )
+								Q.remove(index);
+							
+							Q.add(index);
+							
+						}
+					}
+				}
+			}
+
+			DistPrev dp_xfer = DP.remove(thisVertex);
+			if( dp_xfer==null )
+				Trace.println("Error: DP missing upon transfer index: "+thisVertex);
+			else
+			{
+				if( PRandomFile!=null )
+				{
+					PRandomFile.seek(Integer.BYTES*thisVertex);
+					PRandomFile.writeInt(dp_xfer.getPrev());
+				}
+				else if( POnlyFile!=null )
+				{
+					POnlyFile.writeInt(thisVertex);
+					POnlyFile.writeInt(dp_xfer.getPrev());
+				}
+				else
+				{
+					POnly.put(thisVertex,dp_xfer.getPrev());
+				}
+			}
+		}
+	}
+	
+	private boolean isInboundsAndValidData( int row, int col ) throws Exception
+	{
+		if( row >= m_TopRow && row <= m_BottomRow && col >= m_LeftCol && col <= m_RightCol )
+		{
+			int index = rowColumnToIndex(row,col);
+			float check = actuallyReadFileData(index);
+			if( check != NO_DATA_VALUE && check != WATER_DATA_VALUE )
+				return true;
+		}
+		
+		return false;
+	}
+	
+	private double calculateWeightWithConstraints(int uVert, int vVert) throws Exception
+	{
+		double retn = calculateWeight(uVert,vVert);	
+		
+		if( ImageServiceImpl.getPathConfigs().Algorithm.getValue().getUseConstraints() )
+		{ 
+			if( ImageServiceImpl.getConstraints().List.getValue() != null &&
+					ImageServiceImpl.getConstraints().List.getValue().length > 0 )
+			{
+				if( ImageServiceImpl.getConstraintProcessor()==null)
+					Trace.println(" ConstraintProcessor is NULL");
+	
+				if( ImageServiceImpl.getConstraintProcessor().InMap(vVert) )
+				{
+					double incr = 0.0;
+					try
+					{
+							incr = ImageServiceImpl.getConstraintProcessor().GetValue(vVert);
+					}
+					catch(Exception e)
+					{
+						Trace.println("GET_VALUE Exception: " + e.getMessage() );
+						throw e;
+					}
+					
+					retn += incr;
+				}
+				
+			}
+		}
+
+		return retn;
+	}
+
+	private double calculateWeight(int uVert, int vVert) throws Exception
+	{
+		int[] uRowCol = indexToRowColumn(uVert);
+		int[] vRowCol = indexToRowColumn(vVert);
+		double retn=0.0;
+		
+
+		final double WEIGHT_LBS = ImageServiceImpl.getPathConfigs().Algorithm.getValue().getWeight() * KG_TO_LBS ;
+		final double LOAD_LBS =ImageServiceImpl.getPathConfigs().Algorithm.getValue().getLoad() * KG_TO_LBS ;
+		final double AGE_YRS = ImageServiceImpl.getPathConfigs().Algorithm.getValue().getAge() ;
+		final double HEIGHT_INCHES = ImageServiceImpl.getPathConfigs().Algorithm.getValue().getHeight() * CM_TO_IN ;
+		final boolean IS_FEMALE = false;
+		final double PACE_METERS_PER_SECOND = ImageServiceImpl.getPathConfigs().Algorithm.getValue().getSpeed();
+		final double TERRAIN_FACTOR = ImageServiceImpl.getPathConfigs().Algorithm.getValue().getN() ;
+		
+		//int x=OVERRIDE_TYPE;
+		//if(x == -1) 
+		//int x = ImageServiceImpl.getPathConfigs().LookupById(m_Id).getAlgorithm();
+		int x = getAlgorithm();
+		//x=ImageServiceImpl.getPathConfigs().Algorithm.getValue().getType();
+		
+		switch( x ) /* 0=2D, 1=3D*, 2=Caloric/HikingScience, 3=Caloric/AdirondackMag, 4=Caloric/Historical */
+		{
+			case 0: /* 0=2D */
+			{
+				retn = AppGlobal.CalculateDistance2DMeters( 
+						ImageServiceImpl.getSat().File_RowToLat(uRowCol[0]),
+						ImageServiceImpl.getSat().File_ColToLon(uRowCol[1]),
+						ImageServiceImpl.getSat().File_RowToLat(vRowCol[0]),
+						ImageServiceImpl.getSat().File_ColToLon(vRowCol[1]) 
+						);
+			}
+			break;
+			
+			case 1: /* 1=3D* (favors downhill) */
+			{
+				double uValue = (double) actuallyReadFileData(uVert);
+				double vValue = (double) actuallyReadFileData(vVert);
+	
+				double dist2D = AppGlobal.CalculateDistance2DMeters( 
+						ImageServiceImpl.getSat().File_RowToLat(uRowCol[0]),
+						ImageServiceImpl.getSat().File_ColToLon(uRowCol[1]),
+						ImageServiceImpl.getSat().File_RowToLat(vRowCol[0]),
+						ImageServiceImpl.getSat().File_ColToLon(vRowCol[1]) 
+						);
+				
+				double dist = Math.sqrt( sqr(dist2D) + sqr(vValue-uValue) );
+
+				double elevSlope = (dist<=0)? 0.0 : ((uValue-vValue) / dist);
+				double slopeFactor = 1.0 + elevSlope;
+				if( slopeFactor<0.01) slopeFactor=0.01;
+				if( slopeFactor>100.0) slopeFactor=100.0;
+	
+				retn = dist * slopeFactor;
+			}
+			break;
+		
+			case 2:  /* Caloric / HikingScience  */
+			{
+				double uValue = (double) actuallyReadFileData(uVert);
+				double vValue = (double) actuallyReadFileData(vVert);
+				
+				double dist2D = AppGlobal.CalculateDistance2DMeters( 
+						ImageServiceImpl.getSat().File_RowToLat(uRowCol[0]),
+						ImageServiceImpl.getSat().File_ColToLon(uRowCol[1]),
+						ImageServiceImpl.getSat().File_RowToLat(vRowCol[0]),
+						ImageServiceImpl.getSat().File_ColToLon(vRowCol[1]) 
+						);
+				
+				double distanceMETERS = Math.sqrt( sqr(dist2D) + sqr(vValue-uValue) );
+				
+				
+				double distanceMI = distanceMETERS * 0.000621371;
+				
+				double elevGainFT = (vValue - uValue) * 3.2808388799999997;
+				
+				retn = calories_HikingScience( distanceMI, elevGainFT, WEIGHT_LBS, LOAD_LBS );
+			}
+			break;
+			
+			case 3 : /* Caloric / Adirondack magazine */
+			{		
+				double uValue = (double) actuallyReadFileData(uVert);
+				double vValue = (double) actuallyReadFileData(vVert);
+				
+				double dist2D = AppGlobal.CalculateDistance2DMeters( 
+						ImageServiceImpl.getSat().File_RowToLat(uRowCol[0]),
+						ImageServiceImpl.getSat().File_ColToLon(uRowCol[1]),
+						ImageServiceImpl.getSat().File_RowToLat(vRowCol[0]),
+						ImageServiceImpl.getSat().File_ColToLon(vRowCol[1]) 
+						);
+				
+				double distanceMETERS = Math.sqrt( sqr(dist2D) + sqr(vValue-uValue) );
+				
+				
+				
+				double distanceMI = distanceMETERS * 0.000621371;
+				
+				double elevGainFT = (vValue - uValue) * 3.2808388799999997;
+				
+				retn = calories_AdirondackMagazine(
+						distanceMI,
+						elevGainFT,
+						WEIGHT_LBS+LOAD_LBS,
+						AGE_YRS,
+						HEIGHT_INCHES,
+						IS_FEMALE
+					);
+			}
+			break;
+			
+			case 4:   /* Caloric - Historical code */
+			default	:
+			{
+				final double WEIGHT_KG = WEIGHT_LBS * 0.453592 ;
+				final double LOAD_KG = LOAD_LBS * 0.453592 ;
+				final double HEIGHT_CM = HEIGHT_INCHES * 2.54;
+				final double WALKING_SPEED_METERSPERSEC = PACE_METERS_PER_SECOND ;
+				
+				double uValue = (double) actuallyReadFileData(uVert);
+				double vValue = (double) actuallyReadFileData(vVert);
+				double elevGainMETERS = vValue-uValue;
+				
+				double dist2D = AppGlobal.CalculateDistance2DMeters( 
+						ImageServiceImpl.getSat().File_RowToLat(uRowCol[0]),
+						ImageServiceImpl.getSat().File_ColToLon(uRowCol[1]),
+						ImageServiceImpl.getSat().File_RowToLat(vRowCol[0]),
+						ImageServiceImpl.getSat().File_ColToLon(vRowCol[1]) 
+						);
+				
+				double distanceMETERS = Math.sqrt( sqr(dist2D) + sqr(vValue-uValue) );
+				
+
+				retn = calories_WoodWood(
+						distanceMETERS,
+						elevGainMETERS,
+						WEIGHT_KG,
+						LOAD_KG,
+						AGE_YRS,
+						HEIGHT_CM,
+						IS_FEMALE,
+						WALKING_SPEED_METERSPERSEC,
+						TERRAIN_FACTOR
+						);
+			}
+			break;
+		}
+		
+		return retn;
+	}
+	
+	private double calories_HikingScience(
+		double distanceMI,
+		double elevGainFT,
+		double weightLB,
+		double packLB
+		)
+	{
+		if( elevGainFT<0.0 )
+			elevGainFT=0.0;
+		
+		double avgGrade = elevGainFT/(5280.0*distanceMI);
+		
+		double work = (280.5 * Math.pow(avgGrade,5.0) 
+				-58.7 * Math.pow(avgGrade,4.0) 
+				-76.8 * Math.pow(avgGrade,3.0)
+				+51.9 * Math.pow(avgGrade,2.0)
+				+19.6 * Math.pow(avgGrade, 1.0)
+				+2.5) / 2.5;
+
+		double equivMiles = work*distanceMI;
+		double calBurned = (equivMiles/12.0)*(weightLB/190.0)*1350.0;
+		double calAdjust = calBurned * (1.0 + (2.0/3.0) * ((weightLB+packLB)/weightLB-1));
+		
+		return calAdjust;
+	}
+	
+	private double calories_AdirondackMagazine(
+		double distanceMI,
+		double elevGainFT,
+		double weightLB,
+		double ageYR,
+		double heightIN,
+		boolean isFemale
+		)
+	{
+//		270 calories per mile on flat terrain  (OTHERS USED 1/2 THIS ... 135)
+//		260 calories per 1,000' of elevation gain  (OTHERS USED 259)
+//		Subject to being:
+//		45 years old (add/subtract .4% per year under/over)
+//		150 pounds (scale up/down to your weight)
+//		70 inches tall (add/subtract 1% for every inch over/under)
+//		And the bad news for women: Multiply the result by .85
+		
+		if( elevGainFT<0.0 )
+			elevGainFT=0.0;
+		
+		double base = 135.0 * distanceMI + 259.0 * (elevGainFT/1000.0);
+
+		double age_x = 1.0 + 0.004 * (45.0 - ageYR )  ;
+		double wgt_x = weightLB/150.0;
+		double hgt_x = 1.0 + 0.01 * (heightIN-70.0);
+		double sex_x = (isFemale)?0.85:1.0;
+				
+		double retn = base * age_x * wgt_x * hgt_x * sex_x;
+		
+		return retn;
+	}
+	
+	private double calories_WoodWood(
+			double distanceMETERS,
+			double elevGainMETERS,
+			double weightKG,
+			double packloadKG,
+			double ageYR,
+			double heightCM,
+			boolean isFemale,
+			double walkingSpeedMETERSPERSEC,
+			double terrainFactor
+			)
+	{
+		if( distanceMETERS<=0.0 )
+			return 0.0;
+		
+		double run = Math.sqrt(sqr(distanceMETERS) - sqr(elevGainMETERS));
+		double grade = (100.0*elevGainMETERS) / run;	/* make 2d distance instead of 3d to correctly calculate run for rise/run in grade */
+
+		double m = 1.5*weightKG+2.0*(weightKG+packloadKG)*sqr(packloadKG/weightKG)+
+				terrainFactor*(weightKG+packloadKG)*(1.5*sqr(walkingSpeedMETERSPERSEC)+
+						0.35*walkingSpeedMETERSPERSEC*grade);
+		
+		double mrWATT = m ;  /* Joules per second */
+		if( grade<0.0 )
+		{
+			double c = terrainFactor*((grade*(weightKG+packloadKG)*walkingSpeedMETERSPERSEC)/3.5-
+					(((weightKG+packloadKG)*sqr(grade+6.0))/weightKG)+(25.0-sqr(walkingSpeedMETERSPERSEC))) ;
+
+			mrWATT -=c ;
+		}
+		
+		double durationSEC = distanceMETERS / walkingSpeedMETERSPERSEC;
+		double calculatedKCAL = durationSEC * mrWATT * 0.000239006;
+		
+		double bmrKCALPERDAY = (isFemale)?
+				(655.0+9.6*weightKG+1.8*heightCM-4.7*ageYR) :
+				(66.0+13.7*weightKG+5.0*heightCM-6.8*ageYR) ;
+		
+		double smrKCALPERDAY = 1.2 * bmrKCALPERDAY; 
+		
+		final double SEC_PER_DAY = 24.0 * 60.0 * 60.0;
+		double minimumKCAL = (smrKCALPERDAY * durationSEC) / SEC_PER_DAY; 
+		
+		double retn = Math.max(minimumKCAL, calculatedKCAL);
+		
+		return retn;
+	}
+	
+	private void PublishResults() throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println(getId()+":PathComputation:PublishResults()");
+
+		publishStatus("Publishing Results");
+		
+		Float [] theData = SetPathData();
+
+		Lock();
+		try
+		{
+								
+			PathResultServer res = m_Results.LookupById(m_Id);
+	
+			if(res != null)
+			{
+				if( theData==null )
+				{
+					Thread.sleep(100); /* add delay to make sure "Error" gets posted */
+					publishStatus("Error: Backtracking" );
+				}
+				else
+				{
+				//	res.setData(indexToLatLon(theData));
+					res.setData(theData);
+					res.CalculateAndPostNewAdjustedData();
+	
+					Thread.sleep(100); /* add delay to make sure "Done" gets posted */
+					publishStatus("Done " + getProgress() );
+	
+					res.setColor(ImageServiceImpl.getPathConfigs().LookupById(m_Id).getColor());
+					res.setLength(m_Length);
+					res.setWeight(m_WeightSum);
+				}
+				
+
+				m_Results.AnnounceChanges();	
+				m_Status.AnnounceChanges();
+			}
+		}
+		catch(Exception e)
+		{
+			Trace.println(getId()+":PublishResults() error setting path data, e="+e.getMessage());
+			publishStatus("Error:"+e.getMessage() );
+			throw e;
+		}
+		finally
+		{
+			Unlock();
+		}
+		Trace.println(getId()+": PathComputation::PublishResults completed");
+	}
+	
+	private Float[] SetPathData() throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println(getId()+":PathComputation:PathComputation::SetPathData()");
+
+		Float[] retn = null;
+		ArrayList<Integer> path = traversePath(m_EndIndexY, m_EndIndexX);
+		
+		if( path==null ) /* traversePath failed */
+		{
+			return null;
+		}
+
+		if(DEBUGGING)
+			Trace.println(getId()+":PathComputation:SetPathData(), traversePath length: " + path.size());
+		
+		PrintWriter out=null;
+		FileWriter fw=null;
+		BufferedWriter bw=null;
+		
+//		Lock(); /* try not locking here since takes too long for long paths */
+		try
+		{
+			try
+			{
+				fw = new FileWriter(getCsvFilename(), false);
+				bw = new BufferedWriter(fw);
+				out = new PrintWriter(bw);
+			}
+			catch(Exception e)
+			{
+				if(out!=null) out.close();
+				else if(bw!=null) bw.close();
+				else if(fw!=null) fw.close();
+				out=null;
+				bw=null;
+				fw=null;
+			}
+			
+			if(out!=null)
+			{
+				out.println("PATH DATA");
+				out.println("Start (Lat/Lon),"+m_StartLat+","+m_StartLon);
+				out.println("End,"+m_EndLat+","+m_EndLon);
+				out.println("Count,"+path.size());
+				out.println("");
+				out.println("Point,Lat,Lon,Elev_M,Dist2D_M,Dist3D_M,ElevGain_M,Weight,Sum2D_M,Sum3D_M,SumElevGain_M,SumWeight");
+			}
+			
+			
+			retn =  new Float[ 3 * path.size() ];
+			int startSize = path.size();
+			
+			float prevEle = 0.0f;
+			int prevIndex = -1;
+			
+			double PrevLat=0.0;
+			double PrevLon=0.0;
+			double PrevElev=0.0;
+			double Sum2D=0.0;
+			double Sum3D=0.0;
+			double SumWeight=0.0;
+			double SumElev=0.0;
+			
+			m_Length = 0.0;
+			m_WeightSum = 0.0;
+			for(int i = 0, n = 0; i < startSize; i++)
+			{
+				int index = path.remove(0);
+				int rowCol [] = indexToRowColumn(index);
+				
+				float currEle = actuallyReadFileData(index);
+				
+				// set path data
+				retn[n++] = (float)ImageServiceImpl.getSat().File_RowToLat(rowCol[0]);
+				retn[n++] = (float)ImageServiceImpl.getSat().File_ColToLon(rowCol[1]);
+				retn[n++] = currEle;
+				
+				if(out!=null)
+				{
+					int Point = i;
+					double Lat = ImageServiceImpl.getSat().File_RowToLat(rowCol[0]);
+					double Lon = ImageServiceImpl.getSat().File_ColToLon(rowCol[1]);
+					double Elev = currEle;
+					double Dist2D = (Point==0)? 0.0 : AppGlobal.CalculateDistance2DMeters(PrevLat,PrevLon,Lat,Lon);
+					double Dist3D = (Point==0)? 0.0 : AppGlobal.CalculateDistance3DMeters(PrevLat,PrevLon,PrevElev,Lat,Lon,Elev);
+					double ElevGainM = (Point==0)? 0.0 : Elev-PrevElev;
+					double Weight = (Point==0)? 0.0 : calculateWeight(index,prevIndex);
+					
+					Sum2D += Dist2D;
+					Sum3D += Dist3D;
+					SumElev += ElevGainM;
+					SumWeight += Weight;		
+					
+					out.println( Point
+							+","+latLonFormat.format(Lat)
+							+","+latLonFormat.format(Lon)
+							+","+latLonFormat.format(Elev)
+							+","+latLonFormat.format(Dist2D)
+							+","+latLonFormat.format(Dist3D)
+							+","+latLonFormat.format(ElevGainM)
+							+","+latLonFormat.format(Weight)							
+							+","+latLonFormat.format(Sum2D)
+							+","+latLonFormat.format(Sum3D)
+							+","+latLonFormat.format(SumElev)
+							+","+latLonFormat.format(SumWeight)	
+							);
+	
+					PrevLat = Lat;
+					PrevLon = Lon;
+					PrevElev = Elev;
+				}
+
+				// calculate distance, weight-sum
+				if(prevIndex!= -1)
+				{
+					int prevRowCol[] = indexToRowColumn(prevIndex);		
+					
+					double d = AppGlobal.CalculateDistance3DMeters( 
+							ImageServiceImpl.getSat().File_RowToLat(rowCol[0]),
+							ImageServiceImpl.getSat().File_ColToLon(rowCol[1]),
+							currEle,
+							ImageServiceImpl.getSat().File_RowToLat(prevRowCol[0]),
+							ImageServiceImpl.getSat().File_ColToLon(prevRowCol[1]), prevEle
+							);
+
+					double w = calculateWeight(index,prevIndex);
+
+					m_Length += d;
+					m_WeightSum += w;
+				}
+				
+				prevEle = currEle;
+				prevIndex = index;
+			}
+			
+			if( out!=null ) out.close();
+			else if(bw!=null) bw.close();
+			else if(fw!=null) fw.close();
+			out=null;
+			bw=null;
+			fw=null;
+			
+			Trace.println(getId()+":PathComputation:Points: " + startSize );
+			Trace.println(getId()+":PathComputation:Length: " + m_Length );
+			Trace.println(getId()+":PathComputation:WeightedSum: " + m_WeightSum );
+		}
+		catch(Exception e)
+		{
+			Trace.println(getId()+":PathComputation::SetPathData, e="+e.getMessage());
+			if(out!=null) out.close();
+			else if(bw!=null) bw.close();
+			else if(fw!=null) fw.close();
+			out=null;
+			bw=null;
+			fw=null;
+		}
+		finally
+		{
+//			Unlock();
+		}
+		return retn;
+	}
+	
+	private ArrayList<Integer> traversePath(int row, int col) 
+	{
+		if(DEBUGGING)
+			Trace.println(getId()+":PathComputation:traversePath()");
+		
+		int source = rowColumnToIndex(m_StartIndexY, m_StartIndexX);
+		ArrayList<Integer> path = new ArrayList<Integer>();
+
+		Integer traverse = rowColumnToIndex(row, col);
+		DistPrev dp=null;
+		Integer num=null;
+		boolean noError=true;
+
+		while( traverse != source && noError )
+		{
+			path.add(0, traverse);
+
+			if( (dp = DP.get(traverse)) != null )
+			{
+				traverse = dp.getPrev();
+			}
+			else if( PRandomFile!=null )
+			{
+				try 
+				{
+					PRandomFile.seek(Integer.BYTES*traverse);
+					traverse = PRandomFile.readInt();
+				} 
+				catch (IOException e) 
+				{
+					Trace.println( getId()+":PathComputation::traversePath(), DP and PRandomFile missing index: " + traverse );
+					noError=false;
+				}
+			}
+			else if( (num = POnly.get(traverse)) != null )
+				traverse = num;
+			else
+			{
+				Trace.println( getId()+":PathComputation::traversePath(), DP and POnly missing index: " + traverse );
+				noError=false;
+			}
+		}
+		
+		if( noError==false)
+		{
+			if(DEBUGGING)
+				Trace.println(getId()+": PathComputation::traversePath exiting failed");
+			
+			return null;
+		}
+
+		path.add(0,source);
+		if(DEBUGGING)
+			Trace.println(getId()+": PathComputation::traversePath exiting successfully");
+		
+		return path;
+	}
+	
+	private static String xmlCommentLine = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+	private static String gpxLine = "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" creator=\"Audrey Waschura via Caloric Path Tool\" version=\"1.1\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd\">";
+	private String getPathName() { return ImageServiceImpl.getPathConfigs().LookupById(m_Id).getName(); }
+	private static String descLine = "\t<desc>This file was written from the Caloric Path Tool. It contains a route representing the least cost caloric path from a user-specified start and end point.</desc>\n";
+	private static String authorLine = "\t<author>Audrey Waschura via Caloric Path Tool</author>\n";
+	private ZonedDateTime getTime() { return ZonedDateTime.now(ZoneOffset.UTC); }
+	private String leastCost = "Least cost caloric path";
+	private String keywordsLine = "\t<keywords>" + leastCost + "</keywords>\n";
+	private String routeDescLine = "\t<desc>" + leastCost + "</desc>\n";
+	private String numberLine = "\t<number>1</number>\n";
+	
+//	public void WritePathFile( Double[] data, String fname )
+	public void WritePathFile( Float[] data, String fname )
+	{
+		if(DEBUGGING)
+			Trace.println(getId()+":PathComputation::WritePathFile, n="+data.length);
+		
+		if( fname !=null )
+		{
+			BufferedWriter fd = null;
+			try
+			{
+				fd =
+				new BufferedWriter( 
+					new FileWriter( fname ) 
+					);	
+
+				fd.write(xmlCommentLine);
+				fd.write(gpxLine);
+				fd.write("\n");
+				
+				fd.write("<metadata>\n");
+				fd.write("\t<name>" + getPathName() + "</name>\n");
+				fd.write(descLine);
+				fd.write(authorLine);
+				fd.write("\t<time>" + getTime().toInstant() + "</time>\n");
+				fd.write(keywordsLine);
+				fd.write("</metadata>\n");
+				
+				fd.write("<rte>\n");
+				fd.write("\t<name>"+ getPathName() + "</name>\n");
+				fd.write(routeDescLine);
+				fd.write(numberLine);
+				
+				/* data in (lat, lon, ele) triplets already */
+				for(int n=0; n<data.length; n+=3)
+				{
+					fd.write("\t<rtept lat=\"" + latLonFormat.format(data[n]) + "\" lon=\"" + latLonFormat.format(data[n+1]) + "\">\n");
+					fd.write("\t\t<ele>" + latLonFormat.format(data[n+2]) + "</ele>\n");
+					fd.write("\t</rtept>\n");
+				}
+				
+				fd.write("</rte>\n");
+				fd.write("</gpx>\n");
+			}
+			catch(Exception e)
+			{
+				Trace.println(getId()+":PathComputation::writePathFile(), exception: "+e.getMessage());
+			}
+			finally
+			{
+				try
+				{
+					fd.close();
+				}
+				catch(IOException e)
+				{
+					Trace.println(getId()+":PathComputation::writePathFile(), can't close fd in finally, e="+e.getMessage());
+				}
+			}
+		}
+	}
+	
+	private void startAccessingFile() throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println(getId()+":PathComputation::startAccessingFile()");
+		
+		Lock();
+		try
+		{
+			if( m_IsAccessible==false )
+			{
+				if( m_AccessCount==0 )
+				{		
+					if(DEBUGGING)
+						Trace.println(getId()+":PathComputation::startAccessingFile(), open memory mapped file");
+					
+					m_AccessFd = new RandomAccessFile( new File( m_Sat.TheFile.getElevationPath()  ), "r" );
+					try
+					{
+						long length = m_AccessFd.length() - HEADER_OFFSET;
+						if( length<0 )
+							throw new Exception("Memory mapped file has bad size: " + Long.toString(m_AccessFd.length()));
+						
+						m_AccessMap = m_AccessFd.getChannel().map(FileChannel.MapMode.READ_ONLY, HEADER_OFFSET, length );
+					}
+					finally
+					{
+						m_AccessFd.close();
+						m_AccessFd=null;
+					}
+				}
+				
+				m_AccessCount++ ;
+				m_IsAccessible=true;
+			}
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	private void finishedAccessingFile()
+	{
+		if(DEBUGGING)
+			Trace.println(getId()+":PathComputation::finishedAccessingFile()");
+		
+		Lock();
+		try
+		{
+			if( m_IsAccessible==true )
+			{
+				if( m_AccessCount==1 )
+				{
+					if(DEBUGGING)
+						Trace.println(getId()+":PathComputation::finishedAccessingFile(), closing memory mapped file");
+					
+					m_AccessMap=null;
+					// too expensive.... System.gc(); /* garbage collect */
+				}
+				
+				m_AccessCount-- ;
+				m_IsAccessible=false;
+			}
+		}
+		finally
+		{
+			Unlock();
+		}
+	}
+	
+	private float actuallyReadFileData(int index) throws Exception
+	{
+		float retn;
+		Lock();
+		try
+		{			
+			if(m_AccessMap==null)
+				throw new Exception("Memory mapped descriptor is NULL");
+
+			retn = m_AccessMap.asFloatBuffer().get(index);
+		}
+		finally
+		{
+			Unlock();
+		}
+		
+		return retn;
+	}
+	
+//	public static int latToRow( double lat )
+//	{
+//		/* need span of latitudes in file, number of rows => correct row match */
+//		double heightLatitude = ImageServiceImpl.getSat().FileStatus.getValue().getDegrees()[0];
+//		int numRows = ImageServiceImpl.getSat().FileStatus.getValue().getLines();
+//		double rowsPerDegreeLatitude = (double)numRows / heightLatitude;
+//		double topLatitude = ImageServiceImpl.getSat().FileStatus.getValue().getNSEWDegrees()[0];
+//		double bottomLatitude = ImageServiceImpl.getSat().FileStatus.getValue().getNSEWDegrees()[1];
+//		double clippedLat = Math.max(bottomLatitude, lat);
+//		clippedLat = Math.min(clippedLat, topLatitude);
+//		double differenceInLatitudeFromBot = clippedLat - bottomLatitude;
+//		double differenceInLatitudeFromTop = heightLatitude - differenceInLatitudeFromBot;
+//		double rows = differenceInLatitudeFromTop * rowsPerDegreeLatitude;
+//		
+//		return (int)rows;
+//	}
+
+//	public static int lonToCol( double lon )
+//	{
+//		/* need span of longitudes in file, number of columns => correct column match */
+//		double widthLongitude = ImageServiceImpl.getSat().FileStatus.getValue().getDegrees()[1];
+//		int numColumns = ImageServiceImpl.getSat().FileStatus.getValue().getSamples();
+//		double colsPerDegreeLongitude = (double)numColumns / widthLongitude;
+//		double leftLongitude = ImageServiceImpl.getSat().FileStatus.getValue().getNSEWDegrees()[3];
+//		double rightLongitude = ImageServiceImpl.getSat().FileStatus.getValue().getNSEWDegrees()[2];
+//		double clippedLon = Math.min(rightLongitude, lon);
+//		clippedLon = Math.max(clippedLon, leftLongitude);
+//		double differenceInLongitudeFromLeft = clippedLon - leftLongitude;
+//		double columns = differenceInLongitudeFromLeft * colsPerDegreeLongitude;
+//		
+//		return (int)columns;
+//	}
+	
+//	public static double rowToLat( int row )
+//	{
+//		double heightLatitude = ImageServiceImpl.getSat().FileStatus.getValue().getDegrees()[0];
+//		int numRows = ImageServiceImpl.getSat().FileStatus.getValue().getLines();
+//		double rowsPerDegreeLatitude = (double)numRows / heightLatitude;
+//		double differenceInLatitudeFromTop = ((double)row) / rowsPerDegreeLatitude;
+//		double topLatitude = ImageServiceImpl.getSat().FileStatus.getValue().getNSEWDegrees()[0];
+//		double lat = topLatitude - differenceInLatitudeFromTop;
+//		double bottomLatitude = ImageServiceImpl.getSat().FileStatus.getValue().getNSEWDegrees()[1];
+//		if( lat > topLatitude || lat < bottomLatitude )
+//			Trace.println("PathComputation:rowToLat ERROR latitude out of bounds " + lat);
+//		
+//		return lat;
+//	}
+	
+//	public static double colToLon( int col )
+//	{
+//		double widthLongitude = ImageServiceImpl.getSat().FileStatus.getValue().getDegrees()[1];
+//		int numColumns = ImageServiceImpl.getSat().FileStatus.getValue().getSamples();
+//		double colsPerDegreeLongitude = (double)numColumns / widthLongitude;
+//		double differenceInLongitudeFromLeft = ((double)col) / colsPerDegreeLongitude;
+//		double leftLongitude = ImageServiceImpl.getSat().FileStatus.getValue().getNSEWDegrees()[3];
+//		double lon = differenceInLongitudeFromLeft + leftLongitude;
+//		double rightLongitude = ImageServiceImpl.getSat().FileStatus.getValue().getNSEWDegrees()[2];
+//		if( lon < leftLongitude || lon > rightLongitude )
+//			Trace.println("PathComputation:colToLon ERROR longitude out of bounds " + lon);
+//		
+//		return lon;
+//	}
+	
+	public static int rowColumnToIndex(int row, int column)
+	{
+		return row * ImageServiceImpl.getSat().FileStatus.getValue().getSamples() + column;
+	}
+	
+	private int[] indexToRowColumn(int index)
+	{
+		int cols = index % m_Sat.FileStatus.getValue().getSamples();
+		return new int[] {(index-cols)/m_Sat.FileStatus.getValue().getSamples(),cols};
+	}
+}

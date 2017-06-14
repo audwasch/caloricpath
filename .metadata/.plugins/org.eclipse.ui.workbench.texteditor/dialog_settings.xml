@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<section name="org.eclipse.ui.texteditor.GotoLineAction$GotoLineDialog_dialogBounds">
+		<item value="558" key="DIALOG_X_ORIGIN"/>
+		<item value="354" key="DIALOG_Y_ORIGIN"/>
+	</section>
+	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
+		<item value="false" key="isRegEx"/>
+		<item value="PREPARE_RESULTS" key="selection"/>
+		<item value="true" key="casesensitive"/>
+		<item value="false" key="incremental"/>
+		<item value="true" key="wrap"/>
+		<item value="false" key="wholeword"/>
+		<list key="findhistory">
+			<item value="PREPARE_RESULTS"/>
+			<item value="path"/>
+			<item value="Test"/>
+			<item value="m_SatFile."/>
+			<item value="m_Sat"/>
+			<item value="m_Sat."/>
+			<item value="m_Sat.Changed"/>
+			<item value="Data"/>
+		</list>
+		<list key="replacehistory">
+			<item value="m_"/>
+			<item value="WITH_BUILD_SCENE_EACH_RENDER"/>
+			<item value="WITH_TEXTURE_MAPPING"/>
+			<item value="WITH_SINGLE_LINE"/>
+			<item value="theSingleLine"/>
+			<item value="theWireFrame"/>
+			<item value="thePhi"/>
+			<item value="theTheta"/>
+		</list>
+	</section>
+	<section name="org.eclipse.ui.texteditor.FindReplaceDialog_dialogBounds">
+		<item value="284" key="DIALOG_WIDTH"/>
+		<item value="1|Segoe UI|9.0|0|WINDOWS|1|-12|0|0|0|400|0|0|0|1|0|0|0|0|Segoe UI" key="DIALOG_FONT_NAME"/>
+		<item value="390" key="DIALOG_HEIGHT"/>
+		<item value="1198" key="DIALOG_X_ORIGIN"/>
+		<item value="263" key="DIALOG_Y_ORIGIN"/>
+	</section>
+</section>

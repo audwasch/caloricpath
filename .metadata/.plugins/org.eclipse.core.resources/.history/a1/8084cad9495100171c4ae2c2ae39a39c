@@ -1,0 +1,162 @@
+package com.caloricpath.client;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import com.google.gwt.core.client.GWT;
+import com.google.gwt.http.client.URL;
+import com.google.gwt.user.client.DOM;
+import com.google.gwt.user.client.Event;
+import com.google.gwt.user.client.ui.Frame;
+import com.google.gwt.user.client.ui.RootPanel;
+import com.rpc.shared.Trace;
+
+/* use like this: */
+/*   FileTransfer.DownloadFile( s[0], ModuleName+".csv", "text/csv" );   */
+/*   try this: FileTransfer.DownloadFile( "/satellite/PathDownload.gpx", "Path " + selected.getName() + ".gpx", "application/gpx+xml" ); */
+/*   old way: FileTransfer.DownloadFile( "/var/ftp/foobar.gpx", "Path.gpx", "text/xml" ); */
+
+public class FileTransfer
+{
+	private static final boolean DEBUGGING=false;
+	
+	public static void DownloadFile( String filePath, String fileName, String fileType )
+	{
+		if(DEBUGGING)
+			Trace.println("FileTransfer::downloadFile()");
+	
+	    DownloadCsvAction downloadCsvAction = new DownloadCsvAction();
+	    
+	    GetRequestBuilder x = new GetRequestBuilder();
+	    x.withBaseUrl(GWT.getModuleBaseURL());
+	    x.withTargetUrl("download");
+	    x.havingParameterWithValue("filePath", filePath);
+	    x.havingParameterWithValue("fileType", fileType);
+	    x.havingParameterWithValue("fileName", fileName);
+	       
+	    downloadCsvAction.setEncodedUrl( x.toEncodedUrl() );
+	   
+		if(DEBUGGING)
+			Trace.println("FileTransfer::performSave(), about to Execute");
+		
+	    downloadCsvAction.execute(); 
+	    
+		if(DEBUGGING)
+			Trace.println("FileTransfer::performSave(), done Executing");
+	}
+}
+
+interface SyncAction
+{
+	public abstract void execute();
+}
+
+class DownloadCsvAction implements SyncAction
+{
+	private String encodedUrl;
+
+	public void setEncodedUrl(String encodedUrl)
+	{
+		this.encodedUrl = encodedUrl;
+	}
+
+	public void execute()
+	{
+		@SuppressWarnings("unused")
+		HiddenIFrame frame = new HiddenIFrame(encodedUrl);
+	}
+}
+
+class HiddenIFrame extends Frame
+{
+	public static final long serialVersionUID = 1L;
+
+	public HiddenIFrame(String url)
+	{
+		super();
+		setSize("0px","0px");
+		setVisible(false);
+		sinkEvents(Event.ONLOAD);
+		// TODO: Add Form here so that it will POST instead of GET
+		RootPanel.get().add(this);  // must be RootPanel
+		// Do a GET currently
+		setUrl(url);
+	}
+
+	public void onBrowserEvent(Event event)
+	{
+		if (DOM.eventGetType(event) == Event.ONLOAD)
+		{
+			unsinkEvents(Event.ONLOAD);
+			DOM.eventCancelBubble(event, true);
+			RootPanel.get().remove(this);  // must be RootPanel
+		}
+		else
+		{
+			super.onBrowserEvent(event);
+		}
+	}
+}
+
+class GetRequestBuilder
+{
+	private static final String QUESTIONMARK = "?";
+	private static final String EQUAL_TO = "=";
+	private static final String PARAMETER_DELIMITER = "&";
+
+	private Map<String, String> params = new LinkedHashMap<String, String>();
+	private String baseUrl;
+	private String targetUrl;
+
+	public void withBaseUrl(String baseUrl)
+	{
+		this.baseUrl = baseUrl;
+	}
+
+	public void withTargetUrl(String targetUrl)
+	{
+		this.targetUrl = targetUrl;
+	}
+
+	public void havingParameterWithValue(String name, String value)
+	{
+		if(value != null)
+		{
+			params.put(name, value);
+		}
+	}
+
+	public String toEncodedUrl()
+	{
+		StringBuilder url = new StringBuilder();
+		
+		if(baseUrl != null)
+		{
+			url.append(baseUrl);
+		}
+		if(targetUrl != null)
+		{
+			url.append(targetUrl);
+		}
+		if(!params.entrySet().isEmpty())
+		{
+			url.append(QUESTIONMARK);
+		}
+		
+		int size = params.size();
+		int count = 0;
+		for (Map.Entry<String, String> requestParameter : params.entrySet())
+		{
+			url.append(requestParameter.getKey());
+			url.append(EQUAL_TO);
+			url.append(requestParameter.getValue());
+			if (count < size - 1) {
+				url.append(PARAMETER_DELIMITER);
+				count++;
+			}
+		}
+		
+		return URL.encode(url.toString());
+	}
+}
+

@@ -1,0 +1,297 @@
+package com.caloricpath.server;
+
+import java.awt.Graphics;
+import java.awt.image.BufferedImage;
+import java.io.File;
+
+import javax.imageio.IIOException;
+import javax.imageio.ImageIO;
+
+import com.caloricpath.shared.AppGlobal;
+import com.caloricpath.shared.MapClass;
+import com.caloricpath.shared.SatFileStatus;
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.SplitString;
+import com.rpc.shared.Trace;
+
+public class MapServer
+	extends MapClass
+{
+	/* "final" means can only be set once, here as member */
+	/* variable, or inside constructor, only */
+	
+	private final SatFileServer m_SatFile ;	
+	
+	private BufferedImage awtBufferedImage;
+	private static Double[] origViewArea = null;
+	
+	public MapServer( String name, SatFileServer satFile )
+	{
+		super(name);
+		
+		if(DEBUGGING)
+			Trace.println("MapServer::MapServer(), name="+name);
+		
+		m_SatFile = satFile;
+		
+		m_SatFile.FileStatus.ChangedEvent.add(FileStatus_Changed);
+		
+		OrigSize.ChangedEvent.add(OrigSize_Changed);
+		ViewArea.ChangedEvent.add(ViewArea_Changed);
+		//Data.ChangedEvent.add(Data_Changed);
+		ClientSize.ChangedEvent.add(ClientSize_Changed);
+		Mode.ChangedEvent.add(Mode_Changed);
+		RectangleData.ChangedEvent.add(RectangleData_Changed);
+	}
+	
+	private HandleChanged<SatFileStatus> FileStatus_Changed =
+			new HandleChanged<SatFileStatus>() 
+	{
+		@Override
+		public void Changed(SatFileStatus newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("MapServer::FileStatus_Changed(), newValue=["+newValue.toString()+"]");
+			
+			try
+			{
+				awtBufferedImage = ImageIO.read( new File(AppGlobal.SERVER_SATELLITE_PATH + m_SatFile.FileName.getValue() + ".bmp") );
+				
+				Double[] extentsDeg = m_SatFile.FileStatus.getValue().getDegrees(); /* height(lat), width(long) */
+				double leftLong = m_SatFile.FileStatus.getValue().getNSEWDegrees()[3];
+				double topLat = m_SatFile.FileStatus.getValue().getNSEWDegrees()[0];
+				
+				/* (pixels of high res image) 0: width 1: height */
+				OrigSize.setValue( new Integer[] {awtBufferedImage.getWidth(), awtBufferedImage.getHeight()});
+				origViewArea = new Double[] {leftLong, topLat, extentsDeg[1], extentsDeg[0]};
+				ViewArea.setValue(new Double[] {leftLong, topLat, extentsDeg[1], extentsDeg[0]});
+				Mode.setValue(0);
+
+				recomputePhoto();
+			}
+			catch( IIOException e )
+			{
+				Trace.println("MapServer::FileName_Changed(), exception: "+e.getMessage());
+				throw new Exception(e.getMessage());
+			}
+			catch( Exception e )
+			{
+				Trace.println("MapServer::FileName_Changed(), exception: "+e.getMessage());
+				throw e;
+			}
+		}
+	};
+	
+	/* keep these conversions functions here because just used to create image data */
+	private int longToX(double lon)
+	{
+		double widthLong = m_SatFile.FileStatus.getValue().getDegrees()[1];
+		double colsPerDegLong = (double)OrigSize.getValue()[0] / widthLong;
+		double leftLong = m_SatFile.FileStatus.getValue().getCenter()[1] - (0.5 * widthLong);
+		double rightLong = leftLong + widthLong;
+		double clippedLong = Math.min(rightLong, lon);
+		clippedLong = Math.max(clippedLong, leftLong);
+		double diffInLongFromLeft = clippedLong - leftLong;
+		double columns = diffInLongFromLeft * colsPerDegLong;
+		
+		return (int)columns;
+	}
+	
+	private int latToY(double lat)
+	{
+		double heightLat = m_SatFile.FileStatus.getValue().getDegrees()[0];
+		double rowsPerDegLat = (double)OrigSize.getValue()[1] / heightLat;
+		double topLat = m_SatFile.FileStatus.getValue().getCenter()[0] + (0.5 * heightLat);
+		double botLat = topLat - heightLat;
+		double clippedLat = Math.min(topLat, lat);
+		clippedLat = Math.max(clippedLat, botLat);
+		double diffInLatFromBot = clippedLat - botLat;
+		double diffInLatFromTop = heightLat - diffInLatFromBot;
+		double rows = diffInLatFromTop * rowsPerDegLat;
+		
+		return (int)rows;
+	}
+	
+	private int widthToCols(double longs)
+	{
+		double widthLong = m_SatFile.FileStatus.getValue().getDegrees()[1];
+		double colsPerDegLong = (double)OrigSize.getValue()[0] / widthLong;
+		double columns = colsPerDegLong * longs;
+		
+		return (int)columns;
+	}
+	
+	private int heightToRows(double lats)
+	{
+		double heightLat = m_SatFile.FileStatus.getValue().getDegrees()[0];
+		double rowsPerDegLat = (double)OrigSize.getValue()[1] / heightLat;
+		double rows = rowsPerDegLat * lats;
+		
+		return (int)rows;
+	}
+	
+	private void recomputePhoto() throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("MapServer::recomputePhoto()");
+
+		//first create BufferedImage of specified ViewArea at full res
+		Double [] curr = ViewArea.getValue();
+		BufferedImage area = awtBufferedImage.getSubimage(
+			longToX(curr[0]),
+			latToY(curr[1]),
+			widthToCols(curr[2]),
+			heightToRows(curr[3])
+			);
+		if(DEBUGGING)
+			Trace.println("created area:["+(longToX(curr[0]))+","
+			+(latToY(curr[1]))+","+(widthToCols(curr[2]))+","
+			+(heightToRows(curr[3]))
+			+"], type="+area.getType());
+		
+		//now create sampled version to the width and height of client area
+		File outFile = new File(ImageServiceImpl.getWarPath() + AppGlobal.MAP_2D_FILE);
+//		BufferedImage newImage = new BufferedImage(ClientSize.getValue()[0], ClientSize.getValue()[1], BufferedImage.TYPE_INT_ARGB);
+		BufferedImage newImage = new BufferedImage(ClientSize.getValue()[0], ClientSize.getValue()[1], BufferedImage.TYPE_INT_RGB);
+		
+		Graphics g = newImage.getGraphics();
+		g.drawImage(area, 0, 0, ClientSize.getValue()[0], ClientSize.getValue()[1], null);
+		try
+		{
+			if(ImageIO.write(newImage, "bmp", outFile) == false)
+				Trace.println("no image writer found");
+		}
+		catch(Exception e)
+		{
+			Trace.println("MapServer::recomputePhoto, write failed");
+		}
+		
+		SequenceNumber.setValue(SequenceNumber.getValue() + 1);
+		
+//		int[] pixels = newImage.getRGB(0, 0, ClientSize.getValue()[0], ClientSize.getValue()[1], null, 0, ClientSize.getValue()[0]);
+//		Integer[] Pixels = new Integer[pixels.length];
+//		for(int i = 0; i < pixels.length; i++)
+//			Pixels[i] = (Integer)pixels[i];
+//		
+//		Data.setValue(Pixels);
+	}
+	
+	private HandleChanged<Integer[]> OrigSize_Changed = 
+			new HandleChanged<Integer[]>()
+	{
+		@Override
+		public void Changed(Integer[] newValue) throws Exception
+		{
+			
+			if(DEBUGGING)
+			{
+				String str = SplitString.formArrayValue(newValue);
+				Trace.println("MapServer::OrigSize_Changed(), newValue="+str);
+			}
+		}
+	};
+	
+	private boolean inBounds(Double[] newValue)
+	{		
+		if(newValue.length != origViewArea.length)
+			return false;
+		
+		else if( newValue[0] < origViewArea[0] )
+		{
+			if(DEBUGGING)
+				Trace.println("inBounds:fail left "+(newValue[0]-origViewArea[0]));
+			return false;
+		}
+		else if ( newValue[1] > origViewArea[1] )
+		{
+			if(DEBUGGING)
+				Trace.println("inBounds:fail top " +newValue[1]);
+			return false;
+		}
+		else if( newValue[2] > origViewArea[2] )
+		{
+			if(DEBUGGING)
+				Trace.println("inBounds:fail width "+newValue[2]);
+			return false;
+		}
+		else if( newValue[3] > origViewArea[3] )
+		{
+			if(DEBUGGING)
+				Trace.println("inBounds:fail height "+newValue[3]);
+			return false;
+		}
+		else
+			return true;
+	}
+	
+	private HandleChanged<Double[]> ViewArea_Changed = 
+			new HandleChanged<Double[]>()
+	{
+		@Override
+		public void Changed(Double[] newValue) throws Exception
+		{
+			
+			if(DEBUGGING)
+			{
+				String str = SplitString.formArrayValue(newValue);
+				Trace.println("MapServer::ViewArea_Changed(), newValue="+str);
+			}
+			
+			if(inBounds(newValue))
+				recomputePhoto();
+			else if(origViewArea != null)
+			{
+				if(DEBUGGING)
+					Trace.println("MapServer()::ViewArea_Changed(), setting the original image");
+				
+				ViewArea.setValue(origViewArea);
+			}
+		}
+	};
+	
+//	private HandleChanged<Integer[]> Data_Changed = 
+//			new HandleChanged<Integer[]>()
+//	{
+//		@Override
+//		public void Changed(Integer[] newValue) throws Exception
+//		{
+//			if(DEBUGGING)
+//				Trace.println("MapServer::Data_Changed(), n="+ newValue.length);
+//		}
+//	};
+	
+	private HandleChanged<Double[]> RectangleData_Changed =
+			new HandleChanged<Double[]>()
+	{
+		@Override
+		public void Changed(Double[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("MapServer::RectangleData_Changed(), n="+(newValue==null?"null":newValue.length));
+		}
+	};
+	
+	private HandleChanged<Integer[]> ClientSize_Changed =
+			new HandleChanged<Integer[]>()
+	{
+		@Override
+		public void Changed(Integer[] newValue) throws Exception
+		{
+			String str = SplitString.formArrayValue(newValue);
+			if(DEBUGGING)
+				Trace.println("MapServer::ClientSize_Changed(), newValue="+str);
+		}
+	};
+	
+	private HandleChanged<Integer> Mode_Changed =
+			new HandleChanged<Integer>()
+	{
+		@Override
+		public void Changed(Integer newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("MapServer::Mode_Changed(), newValue="+newValue);
+		}
+	};
+
+}

@@ -1,0 +1,455 @@
+package com.caloricpath.client;
+
+import com.caloricpath.shared.AlgorithmProperties;
+import com.caloricpath.shared.utility.Util;
+import com.google.gwt.event.dom.client.ChangeEvent;
+import com.google.gwt.event.dom.client.ChangeHandler;
+import com.google.gwt.event.dom.client.ClickEvent;
+import com.google.gwt.event.dom.client.ClickHandler;
+import com.google.gwt.event.logical.shared.ValueChangeEvent;
+import com.google.gwt.event.logical.shared.ValueChangeHandler;
+import com.google.gwt.user.client.ui.Button;
+import com.google.gwt.user.client.ui.CheckBox;
+import com.google.gwt.user.client.ui.HasHorizontalAlignment;
+import com.google.gwt.user.client.ui.HorizontalPanel;
+import com.google.gwt.user.client.ui.Label;
+import com.google.gwt.user.client.ui.ListBox;
+import com.google.gwt.user.client.ui.PopupPanel;
+import com.google.gwt.user.client.ui.TextBox;
+import com.google.gwt.user.client.ui.VerticalPanel;
+import com.rpc.shared.Trace;
+
+public class AlgorithmDialog
+{
+	private static boolean DEBUGGING=false;
+	
+	private PopupPanel m_PopupPanel;
+	
+	private AlgorithmProperties m_Alg;
+	
+	private Label m_Label;
+	private String m_Title;
+	private Button m_OkayButton;
+	private Button m_CancelButton;
+	private VerticalPanel m_Layout;
+	private HorizontalPanel m_ButtonsPanel;
+	
+	private HorizontalPanel m_TypePanel;
+	private TextBox m_TypeLabel;
+	private ListBox m_TypeList;
+	
+	private HorizontalPanel m_WeightPanel;
+	private TextBox m_WeightLabel;
+	private TextBox m_WeightEntry;
+	
+	private HorizontalPanel m_HeightPanel;
+	private TextBox m_HeightLabel;
+	private TextBox m_HeightEntry;
+	
+	private HorizontalPanel m_AgePanel;
+	private TextBox m_AgeLabel;
+	private TextBox m_AgeEntry;
+	
+	private HorizontalPanel m_NPanel;
+	private TextBox m_NLabel;
+	private TextBox m_NEntry;
+	
+	private HorizontalPanel m_SpeedPanel;
+	private TextBox m_SpeedLabel;
+	private TextBox m_SpeedEntry;
+	
+	private HorizontalPanel m_LoadPanel;
+	private TextBox m_LoadLabel;
+	private TextBox m_LoadEntry;
+	
+	private HorizontalPanel m_ConstraintsPanel;
+	private TextBox m_ConstraintsLabel;
+	private CheckBox m_ConstraintsBox;
+	
+	public void setAlg(AlgorithmProperties newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmDialog::setAlg()");
+		
+		m_Alg = newValue;
+	}
+	
+	public AlgorithmDialog()
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmDialog::AlgorithmDialog()");
+		
+		m_PopupPanel = new PopupPanel(false);
+		m_Label = new Label();
+		m_PopupPanel.setGlassEnabled(true);
+		buildLayout();
+	}
+	
+	private void buildLayout()
+	{
+		m_Layout = new VerticalPanel();
+		
+		m_ButtonsPanel = new HorizontalPanel();
+		m_OkayButton = new Button("Okay");
+		m_OkayButton.addClickHandler(Okay_Click);
+		m_CancelButton = new Button("Cancel");
+		m_CancelButton.addClickHandler(Cancel_Click);
+		m_ButtonsPanel.add(m_OkayButton);
+		m_ButtonsPanel.add(m_CancelButton);
+		
+		m_TypePanel = new HorizontalPanel();
+		m_TypeLabel = new TextBox();
+		m_TypeList = new ListBox();
+		m_TypeLabel.setReadOnly(true);
+		m_TypeLabel.setText("Type");
+		m_TypeLabel.setWidth("100px");
+		m_TypeLabel.setEnabled(false);
+		for(int i = 0; i < Util.NUM_ALGS; i++)
+			m_TypeList.addItem(Util.AlgorithmStrings[i]);
+		m_TypeList.setVisibleItemCount(1);
+		m_TypeList.setWidth("186px");
+		m_TypeList.setHeight("30px");
+		m_TypeList.addChangeHandler(TypeListChangeHandler);
+		m_TypePanel.add(m_TypeLabel);
+		m_TypePanel.add(m_TypeList);
+		
+		m_ConstraintsPanel = new HorizontalPanel();
+		m_ConstraintsLabel = new TextBox();
+		m_ConstraintsBox = new CheckBox();
+		m_ConstraintsLabel.setReadOnly(true);
+		m_ConstraintsLabel.setText("Use Constraints");
+		m_ConstraintsLabel.setWidth("100px");
+		m_ConstraintsLabel.setEnabled(false);
+		m_ConstraintsBox.setWidth("186px");
+		m_ConstraintsBox.setHeight("30px");
+		m_ConstraintsBox.addValueChangeHandler(ConstraintsBoxChangeHandler);
+		m_ConstraintsPanel.add(m_ConstraintsLabel);
+		m_ConstraintsPanel.add(m_ConstraintsBox);
+		
+		m_WeightPanel = new HorizontalPanel();
+		m_WeightLabel = new TextBox();
+		m_WeightEntry = new TextBox();
+		m_WeightLabel.setReadOnly(true);
+		m_WeightLabel.setText("Weight (kg)");
+		m_WeightLabel.setWidth("100px");
+		m_WeightLabel.setEnabled(false);
+		m_WeightEntry.addValueChangeHandler(WeightEntryChangeHandler);
+		m_WeightPanel.add(m_WeightLabel);
+		m_WeightPanel.add(m_WeightEntry);
+		
+		m_HeightPanel = new HorizontalPanel();
+		m_HeightLabel = new TextBox();
+		m_HeightEntry = new TextBox();
+		m_HeightLabel.setReadOnly(true);
+		m_HeightLabel.setText("Height (cm)");
+		m_HeightLabel.setWidth("100px");
+		m_HeightLabel.setEnabled(false);
+		m_HeightEntry.addValueChangeHandler(HeightEntryChangeHandler);
+		m_HeightPanel.add(m_HeightLabel);
+		m_HeightPanel.add(m_HeightEntry);
+		
+		m_AgePanel = new HorizontalPanel();
+		m_AgeLabel = new TextBox();
+		m_AgeEntry = new TextBox();
+		m_AgeLabel.setReadOnly(true);
+		m_AgeLabel.setText("Age (years)");
+		m_AgeLabel.setWidth("100px");
+		m_AgeLabel.setEnabled(false);
+		m_AgeEntry.addValueChangeHandler(AgeEntryChangeHandler);
+		m_AgePanel.add(m_AgeLabel);
+		m_AgePanel.add(m_AgeEntry);
+		
+		m_NPanel = new HorizontalPanel();
+		m_NLabel = new TextBox();
+		m_NEntry = new TextBox();
+		m_NLabel.setReadOnly(true);
+		m_NLabel.setText("Terrain Factor");
+		m_NLabel.setWidth("100px");
+		m_NLabel.setEnabled(false);
+		m_NEntry.addValueChangeHandler(NEntryChangeHandler);
+		m_NPanel.add(m_NLabel);
+		m_NPanel.add(m_NEntry);
+		
+		m_SpeedPanel = new HorizontalPanel();
+		m_SpeedLabel = new TextBox();
+		m_SpeedEntry = new TextBox();
+		m_SpeedLabel.setReadOnly(true);
+		m_SpeedLabel.setText("Speed (m/s)");
+		m_SpeedLabel.setWidth("100px");
+		m_SpeedLabel.setEnabled(false);
+		m_SpeedEntry.addValueChangeHandler(SpeedEntryChangeHandler);
+		m_SpeedPanel.add(m_SpeedLabel);
+		m_SpeedPanel.add(m_SpeedEntry);
+		
+		m_LoadPanel = new HorizontalPanel();
+		m_LoadLabel = new TextBox();
+		m_LoadEntry = new TextBox();
+		m_LoadLabel.setReadOnly(true);
+		m_LoadLabel.setText("Load Carried (kg)");
+		m_LoadLabel.setWidth("100px");
+		m_LoadLabel.setEnabled(false);
+		m_LoadEntry.addValueChangeHandler(LoadEntryChangeHandler);
+		m_LoadPanel.add(m_LoadLabel);
+		m_LoadPanel.add(m_LoadEntry);
+		
+		m_Layout.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_CENTER);
+		m_Layout.add(m_Label);
+		m_Layout.add(m_TypePanel);
+		m_Layout.add(m_ConstraintsPanel);
+		m_Layout.add(m_WeightPanel);
+		m_Layout.add(m_HeightPanel);
+		m_Layout.add(m_AgePanel);
+		m_Layout.add(m_NPanel);
+		m_Layout.add(m_SpeedPanel);
+		m_Layout.add(m_LoadPanel);
+		m_Layout.add(m_ButtonsPanel);
+		
+		m_PopupPanel.add(m_Layout);
+	}
+	
+	private ChangeHandler TypeListChangeHandler = new ChangeHandler()
+	{
+		@Override
+		public void onChange(ChangeEvent event)
+		{
+			m_Alg.setType(m_TypeList.getSelectedIndex());
+			switch(m_TypeList.getSelectedIndex())
+			{
+				case 0:
+					m_WeightPanel.setVisible(false);
+					m_HeightPanel.setVisible(false);
+					m_AgePanel.setVisible(false);
+					m_NPanel.setVisible(false);
+					m_SpeedPanel.setVisible(false);
+					m_LoadPanel.setVisible(false);
+					break;
+					
+				case 1:
+					m_WeightPanel.setVisible(false);
+					m_HeightPanel.setVisible(false);
+					m_AgePanel.setVisible(false);
+					m_NPanel.setVisible(false);
+					m_SpeedPanel.setVisible(false);
+					m_LoadPanel.setVisible(false);
+					break;
+				
+				case 2:
+					m_WeightPanel.setVisible(true);
+					m_HeightPanel.setVisible(false);
+					m_AgePanel.setVisible(false);
+					m_NPanel.setVisible(false);
+					m_SpeedPanel.setVisible(false);
+					m_LoadPanel.setVisible(true);
+					
+					m_WeightEntry.setText(String.valueOf(m_Alg.getWeight()));
+					m_LoadEntry.setText(String.valueOf(m_Alg.getLoad()));
+					break;
+					
+				case 3:
+					m_WeightPanel.setVisible(true);
+					m_HeightPanel.setVisible(true);
+					m_AgePanel.setVisible(true);
+					m_NPanel.setVisible(false);
+					m_SpeedPanel.setVisible(false);
+					m_LoadPanel.setVisible(false);
+					
+					m_WeightEntry.setText(String.valueOf(m_Alg.getWeight()));
+					m_HeightEntry.setText(String.valueOf(m_Alg.getHeight()));
+					m_AgeEntry.setText(String.valueOf(m_Alg.getAge()));
+					break;
+					
+				case 4:
+					m_WeightPanel.setVisible(true);
+					m_HeightPanel.setVisible(true);
+					m_AgePanel.setVisible(true);
+					m_NPanel.setVisible(true);
+					m_SpeedPanel.setVisible(true);
+					m_LoadPanel.setVisible(true);
+					
+					m_WeightEntry.setText(String.valueOf(m_Alg.getWeight()));
+					m_HeightEntry.setText(String.valueOf(m_Alg.getHeight()));
+					m_AgeEntry.setText(String.valueOf(m_Alg.getAge()));
+					m_NEntry.setText(String.valueOf(m_Alg.getN()));
+					m_SpeedEntry.setText(String.valueOf(m_Alg.getSpeed()));
+					m_LoadEntry.setText(String.valueOf(m_Alg.getLoad()));
+					break;
+			}
+		}
+	};
+	
+	private ValueChangeHandler<Boolean> ConstraintsBoxChangeHandler = new ValueChangeHandler<Boolean>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<Boolean> event)
+		{
+			m_Alg.setUseConstraints(event.getValue());
+		}
+	};
+	
+	private ValueChangeHandler<String> WeightEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			m_Alg.setWeight(Double.parseDouble(event.getValue()));
+		}
+	};
+	
+	private ValueChangeHandler<String> HeightEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			m_Alg.setHeight(Double.parseDouble(event.getValue()));
+		}
+	};
+	
+	private ValueChangeHandler<String> AgeEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			m_Alg.setAge(Double.parseDouble(event.getValue()));
+		}
+	};
+	
+	private ValueChangeHandler<String> NEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			m_Alg.setN(Double.parseDouble(event.getValue()));
+		}
+	};
+	
+	private ValueChangeHandler<String> SpeedEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			m_Alg.setSpeed(Double.parseDouble(event.getValue()));
+		}
+	};
+	
+	private ValueChangeHandler<String> LoadEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			m_Alg.setLoad(Double.parseDouble(event.getValue()));
+		}
+	};
+	
+	public void Open()
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmDialog::Open()");
+		
+		m_Title = "Edit Algorithm Properties";
+		createPanel();
+	}
+	
+	private void createPanel()
+	{
+		if(DEBUGGING)
+			Trace.println("AlgorithmDialog::createPanel()");
+		
+		m_Label.setText(m_Title);
+		
+		m_TypeList.setSelectedIndex(m_Alg.getType());
+		
+		m_ConstraintsBox.setValue(m_Alg.getUseConstraints());
+		
+		switch(m_Alg.getType())
+		{
+			case 0:
+				m_WeightPanel.setVisible(false);
+				m_HeightPanel.setVisible(false);
+				m_AgePanel.setVisible(false);
+				m_NPanel.setVisible(false);
+				m_SpeedPanel.setVisible(false);
+				m_LoadPanel.setVisible(false);
+				break;
+				
+			case 1:
+				m_WeightPanel.setVisible(false);
+				m_HeightPanel.setVisible(false);
+				m_AgePanel.setVisible(false);
+				m_NPanel.setVisible(false);
+				m_SpeedPanel.setVisible(false);
+				m_LoadPanel.setVisible(false);
+				break;
+			
+			case 2:
+				m_WeightPanel.setVisible(true);
+				m_HeightPanel.setVisible(false);
+				m_AgePanel.setVisible(false);
+				m_NPanel.setVisible(false);
+				m_SpeedPanel.setVisible(false);
+				m_LoadPanel.setVisible(true);
+				
+				m_WeightEntry.setText(String.valueOf(m_Alg.getWeight()));
+				m_LoadEntry.setText(String.valueOf(m_Alg.getLoad()));
+				break;
+				
+			case 3:
+				m_WeightPanel.setVisible(true);
+				m_HeightPanel.setVisible(true);
+				m_AgePanel.setVisible(true);
+				m_NPanel.setVisible(false);
+				m_SpeedPanel.setVisible(false);
+				m_LoadPanel.setVisible(false);
+				
+				m_WeightEntry.setText(String.valueOf(m_Alg.getWeight()));
+				m_HeightEntry.setText(String.valueOf(m_Alg.getHeight()));
+				m_AgeEntry.setText(String.valueOf(m_Alg.getAge()));
+				break;
+				
+			case 4:
+				m_WeightPanel.setVisible(true);
+				m_HeightPanel.setVisible(true);
+				m_AgePanel.setVisible(true);
+				m_NPanel.setVisible(true);
+				m_SpeedPanel.setVisible(true);
+				m_LoadPanel.setVisible(true);
+				
+				m_WeightEntry.setText(String.valueOf(m_Alg.getWeight()));
+				m_HeightEntry.setText(String.valueOf(m_Alg.getHeight()));
+				m_AgeEntry.setText(String.valueOf(m_Alg.getAge()));
+				m_NEntry.setText(String.valueOf(m_Alg.getN()));
+				m_SpeedEntry.setText(String.valueOf(m_Alg.getSpeed()));
+				m_LoadEntry.setText(String.valueOf(m_Alg.getLoad()));
+				break;
+		}
+		
+		m_PopupPanel.center();
+		m_PopupPanel.show();
+	}
+	
+	ClickHandler Okay_Click = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			m_PopupPanel.hide();
+			
+			try
+			{
+				CaloricPath.getPathConfigList().Algorithm.setValue(m_Alg);
+			}
+			catch(Exception e)
+			{
+				Trace.println("AlgorithmDialog::Okay_Click Algorithm.setValue failed, e="+e.getMessage());
+			}
+		}
+	};
+	
+	ClickHandler Cancel_Click = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			m_PopupPanel.hide();
+		}
+	};
+}

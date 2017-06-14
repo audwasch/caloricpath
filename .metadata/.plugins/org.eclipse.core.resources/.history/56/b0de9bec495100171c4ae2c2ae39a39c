@@ -1,0 +1,127 @@
+package com.caloricpath.client;
+
+import com.google.gwt.event.dom.client.ClickEvent;
+import com.google.gwt.event.dom.client.ClickHandler;
+import com.google.gwt.user.client.ui.Anchor;
+import com.google.gwt.user.client.ui.Button;
+import com.google.gwt.user.client.ui.HasHorizontalAlignment;
+import com.google.gwt.user.client.ui.Label;
+import com.google.gwt.user.client.ui.PopupPanel;
+import com.google.gwt.user.client.ui.TextArea;
+import com.google.gwt.user.client.ui.VerticalPanel;
+import com.rpc.shared.Trace;
+
+public class InfoDialog
+{
+	private static boolean DEBUGGING = false;
+	
+	private static final String INFO_TEXT =
+		"This web application is intended for users to compute and visualize "
+		+"Least Cost Caloric Paths over terrain. Constraints can also be drawn"
+		+" onto the terrain in order to mark areas to avoid during path "
+		+"calculations.\n\n-Paths: To create a new path, click the Manage Paths"
+		+" Button below. This will take you to the Paths menu. From here, you "
+		+"can click Add Path and enter your start and end points, select a "
+		+"color, choose which caloric model to use in the calculation, and "
+		+"give your new path a name. If you want to remove a path, select it from"
+		+" the list of paths in the paths menu and click the Delete Path "
+		+"button. To edit a path's configuration, select it and click Edit "
+		+"Path. You can also click on a start or end point of a path in the "
+		+"Map and then use your mouse to select a new start/end point. To "
+		+"export your path in .gpx format, select it from the list of paths "
+		+"and click the Export Selected button.\n\n-Constraints: To create a "
+		+"new constraint, click on the Manage Constraints button. This will "
+		+"bring you to the constraints menu. From here, you can click the Draw"
+		+" Line button to draw a poly line or the Draw Polygon button to draw "
+		+"a polygon. If you want to remove a constraint, you can select it "
+		+"from the list of constraints and click the Delete Selected button. "
+		+"You can edit a constraint by selecting it in the constraints table "
+		+"and clicking the Edit Selected button.\n\n-3D Region: You can select "
+		+"a specific render region by clicking on the button with the "
+		+"rectangular dotted outline. Once the button becomes green, you can "
+		+"click and drag to select an area on the map to render in 3D.\n\n"
+		+"-Map Navigation: To navigate the map, use the plus and minus buttons to zoom in "
+		+"and out. Use the hand button to select Pan mode. Once the hand "
+		+"button is green, you can click and drag to pan the map. The Reset "
+		+"button resets the map to the original state of viewing the full area"
+		+".\n\n-3D Navigation: To navigate the 3D region, use the left set of buttons to "
+		+"move the camera location left, right, in, and out. Use the right set"
+		+" of buttons to rotate where the camera is looking left, right, up "
+		+"and down. Both center buttons reset the camera position to be the "
+		+"original view. Double-clicking the button with the rectangular "
+		+"dotted line resets the 3D region to render the full area."
+		;
+	
+	private PopupPanel m_PopupPanel;
+	private Button m_OkayButton;
+	private VerticalPanel m_Layout;
+	
+	public InfoDialog()
+	{
+		if(DEBUGGING)
+			Trace.println("InfoDialog::InfoDialog()");
+		
+		m_PopupPanel = new PopupPanel(false);
+		m_PopupPanel.setGlassEnabled(true);
+		
+		buildMessage();
+	}
+	
+	private void buildMessage()
+	{
+		if(DEBUGGING)
+			Trace.println("InfoDialog::buildMessage()");
+		
+		m_Layout = new VerticalPanel();
+		m_Layout.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_CENTER);
+		m_OkayButton = new Button("Okay");
+		m_OkayButton.addClickHandler(Okay_Click);
+		
+		Label label = new Label("Welcome to the Caloric Path Tool");
+		m_Layout.add(label);
+		
+		VerticalPanel inner = new VerticalPanel();
+		
+		inner.add(new Label("Use:"));
+		
+		Anchor Hudson = new Anchor("Hudson Hikers", "https://www.hudsonhikers.org/calories.html");
+		Anchor Hiking = new Anchor("Hiking Science", "http://hikingscience.blogspot.com/p/calculate-calories-burned_22.html");
+		Anchor Wood = new Anchor("Wood & Wood", "http://www.brianwoodresearch.com/papers/Wood%20and%20Wood%202006%20Energetically%20Optimal%20Travel%20across%20Terrain%20--%20SPIE%20Proceedings.pdf");
+		
+		TextArea text = new TextArea();
+		text.setText(INFO_TEXT);
+		text.setEnabled(false);
+		text.setReadOnly(true);
+		text.setWidth("500px");
+		text.setHeight("500px");
+		inner.add(text);
+		
+		inner.add(new Label("Algorithms:"));
+		inner.add(Hudson);
+		inner.add(Hiking);
+		inner.add(Wood);
+		
+		m_Layout.add(inner);
+		m_Layout.add(m_OkayButton);
+		m_PopupPanel.add(m_Layout);
+	}
+	
+	public void Open()
+	{
+		if(DEBUGGING)
+			Trace.println("InfoDialog::Open()");
+		
+		m_PopupPanel.center();
+		m_PopupPanel.show();
+	}
+	
+	ClickHandler Okay_Click = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			m_PopupPanel.hide();
+		}
+	};
+
+}

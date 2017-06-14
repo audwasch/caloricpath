@@ -1,0 +1,2547 @@
+package com.caloricpath.client;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Stack;
+import com.caloricpath.shared.Constraint;
+import com.caloricpath.shared.Constraint.ConstraintType;
+import com.caloricpath.shared.Constraint.DistributionType;
+import com.caloricpath.shared.RenderView;
+import com.caloricpath.shared.SatFileStatus;
+import com.caloricpath.shared.utility.Util;
+import com.google.gwt.canvas.client.Canvas;
+import com.google.gwt.canvas.dom.client.Context2d;
+import com.google.gwt.canvas.dom.client.CssColor;
+import com.google.gwt.canvas.dom.client.ImageData;
+import com.google.gwt.cell.client.EditTextCell;
+import com.google.gwt.core.client.EntryPoint;
+import com.google.gwt.core.client.GWT;
+import com.google.gwt.dom.client.CanvasElement;
+import com.google.gwt.dom.client.Style.BorderStyle;
+import com.google.gwt.dom.client.Style.Unit;
+import com.google.gwt.event.dom.client.ClickEvent;
+import com.google.gwt.event.dom.client.ClickHandler;
+import com.google.gwt.event.dom.client.DoubleClickEvent;
+import com.google.gwt.event.dom.client.DoubleClickHandler;
+import com.google.gwt.event.dom.client.MouseDownEvent;
+import com.google.gwt.event.dom.client.MouseDownHandler;
+import com.google.gwt.event.dom.client.MouseMoveEvent;
+import com.google.gwt.event.dom.client.MouseMoveHandler;
+import com.google.gwt.event.dom.client.MouseUpEvent;
+import com.google.gwt.event.dom.client.MouseUpHandler;
+import com.google.gwt.i18n.client.NumberFormat;
+import com.google.gwt.user.cellview.client.CellTable;
+import com.google.gwt.user.cellview.client.Column;
+import com.google.gwt.user.cellview.client.HasKeyboardSelectionPolicy.KeyboardSelectionPolicy;
+import com.google.gwt.user.cellview.client.TextColumn;
+import com.google.gwt.user.client.Window;
+import com.google.gwt.user.client.rpc.AsyncCallback;
+import com.google.gwt.user.client.ui.Button;
+import com.google.gwt.user.client.ui.DockLayoutPanel;
+import com.google.gwt.user.client.ui.FlowPanel;
+import com.google.gwt.user.client.ui.HorizontalPanel;
+import com.google.gwt.user.client.ui.Image;
+import com.google.gwt.user.client.ui.Label;
+import com.google.gwt.user.client.ui.LayoutPanel;
+import com.google.gwt.user.client.ui.RootLayoutPanel;
+import com.google.gwt.user.client.ui.ScrollPanel;
+import com.google.gwt.user.client.ui.SplitLayoutPanel;
+import com.google.gwt.user.client.ui.StackLayoutPanel;
+import com.google.gwt.user.client.ui.TextBox;
+import com.google.gwt.user.client.ui.VerticalPanel;
+import com.google.gwt.user.client.ui.Widget;
+import com.google.gwt.view.client.ProvidesKey;
+import com.google.gwt.view.client.SelectionChangeEvent;
+import com.google.gwt.view.client.SingleSelectionModel;
+import com.rpc.client.RpcLib;
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.Trace;
+
+import thothbot.parallax.core.client.RenderingPanel;
+
+/**
+ * Entry point classes define <code>onModuleLoad()</code>.
+ */
+
+public class CaloricPath 
+		implements EntryPoint 
+{
+	private final static boolean DEBUGGING=false;
+	private static final boolean WITH_BUTTON_INITIALIZATION=false; /* must be same as ImageServiceImpl class */
+	
+	/**
+	 * The message displayed to the user when the server cannot be reached or
+	 * returns an error.
+	 */
+	
+	public static DockLayoutPanel TheLayout;
+	public static LayoutPanel TheHeader;
+	public static LayoutPanel TheFooter;
+	public static HorizontalPanel TheTable;
+	public static StackLayoutPanel TheMenu;
+	public static LayoutPanel TheMain;
+	public static LayoutPanel TheLayersLayout;
+	public static RenderingPanel RenderPanel;
+	public static Canvas ImageLayer ;
+	public static Canvas InteractiveLayer ;
+	public static ImageData MyImage ;
+	public static Context2d ImageContext ;
+	public static Context2d InteractiveContext ;
+	public static DemoScene03 TheScene;
+	public static ScrollPanel TheLeft2DPanel;
+	public static Stack<HorizontalPanel> Control2DPanelStack;
+	public static Button LoadFileButton;
+	public static Button ThePanButton0;
+	public static Button TheSelectButton1;
+	public static Button TheLineButton2;
+	public static Button ThePolyButton3;
+	public static TextBox ThePosition;
+	private static ConfigDialog TheConfigDialog ;
+	private static ConstraintDialog TheConstraintDialog ;
+	private static AlgorithmDialog TheAlgorithmDialog ;
+	
+	private static int startXPos = -1;
+	private static int startYPos = -1;
+	
+	private static boolean Poly_Capture;
+	private static ArrayList<Point> PolyPointsList;
+	private static int PolyPointsCount;
+	private static List<Constraint> TheConstraintsList;
+	private static CellTable<Constraint> TheConstraintsTable;
+	private static int ConstraintsCounter = 0;
+	private static Constraint TheSelectedConstraint;
+	private static List<CombinedClient> ThePathList;
+	private static CellTable<CombinedClient> ThePathTable;
+	private static int PathCounter = 0;
+	private static CombinedClient[] TheCombinedArray;
+	private static CombinedClient TheSelectedPath;
+	private static SingleSelectionModel<CombinedClient> ThePathSelectionModel;
+	private static HorizontalPanel ThePathsPanel;
+	private static HorizontalPanel TheConstraintsPanel;
+	private static NumberFormat TheLatLonFormat;
+	
+	private static MapLayers m_The2DMap;
+	public static LinkedList<Integer> ExportQueue = new LinkedList<Integer>();
+
+	/**
+	 * Create a remote service proxy to talk to the server-side Rpc service.
+	 */
+	
+	public final ImageServiceAsync imageService ;
+	
+	private static SatFileClient m_SatFile ;
+	private static MapClient m_Map ;
+	private static RenderViewClient m_View;
+	private static ConstraintCollectionClient m_Constraints;
+	private static PathConfigCollectionClient m_PathConfigs;
+	private static PathResultCollectionClient m_PathResults;
+	private static PathStatusCollectionClient m_PathStatus;
+
+	public CaloricPath()
+	{
+		RpcLib.OneTimeInitialize();
+		
+		imageService = GWT.create(ImageService.class);	
+		
+		imageService.initialize( new AsyncCallback<Boolean>() 
+		{
+			@Override
+			public void onFailure(Throwable caught){}
+
+			@Override
+			public void onSuccess(Boolean result){}
+		} );
+		
+		if(DEBUGGING)
+			Trace.println("CaloricPath::CaloricPath()");	
+		
+		if( WITH_BUTTON_INITIALIZATION==true )
+			initializeRpcObjects();
+	}
+	
+	public static SatFileClient getSat() { return m_SatFile; }
+	public static PathConfigCollectionClient getPathConfigList() { return m_PathConfigs; }
+	public static ConstraintCollectionClient getConstraintList() { return m_Constraints; }
+	
+	private void initializeRpcObjects()
+	{
+		m_SatFile = new SatFileClient("MySatFile");
+		m_Map = new MapClient("MyMap", m_SatFile);
+		m_View = new RenderViewClient("MyView");
+		m_Constraints = new ConstraintCollectionClient("MyConstraints");
+		m_PathConfigs = new PathConfigCollectionClient("MyPathConfigs");
+		m_PathResults = new PathResultCollectionClient("MyPathResults");
+		m_PathStatus = new PathStatusCollectionClient("MyPathStatus");
+		m_The2DMap = new MapLayers();
+		
+		RpcLib.getEngine().AttachObject(m_SatFile);
+		RpcLib.getEngine().AttachObject(m_Map);
+		RpcLib.getEngine().AttachObject(m_View);
+		RpcLib.getEngine().AttachObject(m_Constraints);
+		RpcLib.getEngine().AttachObject(m_PathConfigs);
+		RpcLib.getEngine().AttachObject(m_PathResults);
+		RpcLib.getEngine().AttachObject(m_PathStatus);
+		
+		m_Map.ClientSize.ChangedEvent.add(new HandleChanged<Integer[]>()
+		{
+			@Override
+			public void Changed(Integer[] newValue) throws Exception
+			{
+				try
+				{
+					m_The2DMap.setWidth(newValue[0]);
+					m_The2DMap.setHeight(newValue[1]);
+				}
+				catch (Exception e)
+				{
+					Trace.println("m_Map.ClientSize.ChangedEvent CAUGHT, e="+e.getMessage());
+					throw e;
+				}
+			}
+		});
+		
+		m_Map.ViewArea.ChangedEvent.add(new HandleChanged<Double[]>()
+		{
+			@Override
+			public void Changed(Double[] newValue) throws Exception
+			{
+				if(DEBUGGING)
+					Trace.println("m_Map.ViewArea.ChangedEvent");
+				
+				try
+				{
+					m_The2DMap.setViewArea(newValue);
+				}
+				catch(Exception e)
+				{
+					Trace.println("m_Map.ViewArea.ChangedEvent, e="+e.getMessage());
+					throw e;
+				}
+			}
+		});
+		
+		m_SatFile.Data.ChangedEvent.add(new HandleChanged<Float[]>() 
+		{
+			@Override
+			public void Changed(Float[] newValue) throws Exception 
+			{
+				if(DEBUGGING)
+					Trace.println("m_SatFile.Data.ChangedEvent()");
+				try
+				{
+					TheScene.RenderMe(
+					m_SatFile.DataDimensions.getValue()[0],
+					m_SatFile.DataDimensions.getValue()[1],
+					newValue
+					);
+				}
+				catch(Exception e)
+				{
+					Trace.println("m_SatFile.Data.ChangedEvent caught e="+e.getMessage());
+					throw e;
+				}
+			}
+		});
+		
+		m_SatFile.FileStatus.ChangedEvent.add( new HandleChanged<SatFileStatus>()
+		{
+			@Override
+			public void Changed(SatFileStatus newValue) throws Exception 
+			{
+				if(DEBUGGING)
+					Trace.println("m_SatFile.FileName.ChangedEvent()");
+				
+				m_Title.setText( m_SatFile.FileStatus.getValue().getName().replace('_', ' '));
+				
+				int rows = m_SatFile.FileStatus.getValue().getLines();
+				int cols = m_SatFile.FileStatus.getValue().getSamples();
+				String rowsAndColumns = "Dimensions: " + rows + " Rows x " + cols + " Columns" ;
+				
+				double widthLon = m_SatFile.FileStatus.getValue().getDegrees()[1];
+				final double METERS_PER_DEG_LON = 110690.469;
+				double widthMeters = widthLon * METERS_PER_DEG_LON;
+				//double resWidth = widthMeters / (double)cols;
+				
+				double heightLat = m_SatFile.FileStatus.getValue().getDegrees()[0];
+				final double METERS_PER_DEG_LAT = 110586.868647;
+				double heightMeters = heightLat * METERS_PER_DEG_LAT;
+				double resHeight = heightMeters / (double)rows;
+				
+				String heightWidthMeters = ((int)(heightMeters / 1000.0)) + "km Height x " + ((int)(widthMeters / 1000.0)) + "km Width" ;
+				String resolution = " Resolution: " + ((int)resHeight) + "m";
+				
+				String elevationScale = "Elevation scale: 4X";
+				
+				double N = m_SatFile.FileStatus.getValue().getNSEWDegrees()[0];
+				double S = m_SatFile.FileStatus.getValue().getNSEWDegrees()[1];
+				double E = m_SatFile.FileStatus.getValue().getNSEWDegrees()[2];
+				double W = m_SatFile.FileStatus.getValue().getNSEWDegrees()[3];
+				String latitudeRange = "Latitudes: " + TheLatLonFormat.format(N) + " to " + TheLatLonFormat.format(S) ;
+				String longitudeRange = "Longitudes: " + TheLatLonFormat.format(W) + " to " + TheLatLonFormat.format(E) ;
+				
+				m_Subtitle.setText(
+					rowsAndColumns + ", " + heightWidthMeters + ", " + resolution
+						);
+				m_SubSubTitle.setText(
+					latitudeRange + ", " + longitudeRange + ", " + elevationScale
+					);
+			}
+		});
+		
+		m_View.View.ChangedEvent.add(new HandleChanged<RenderView>()
+		{
+			@Override
+			public void Changed(RenderView newValue) throws Exception
+			{
+				if(DEBUGGING)
+					Trace.println("CaloricPath::m_View.View.ChangedEvent()");
+				
+				TheScene.setRenderView(newValue);
+			}
+		});
+
+		m_Map.Data.ChangedEvent.add(new HandleChanged<Integer[]>()
+		{
+			@Override
+			public void Changed(Integer[] newValue) throws Exception
+			{
+				if(DEBUGGING)
+					Trace.println("CaloricPath::m_Map.Data.ChangedEvent, n="+newValue.length);
+				
+				int width = m_Map.ClientSize.getValue()[0];
+				
+				for(int ndx = 0; ndx < newValue.length; ndx++)
+				{
+					int row = ndx / width;
+					int col = ndx % width;
+					
+					int b = (newValue[ndx]>>0) & 0xFF;
+					int g = (newValue[ndx]>>8) & 0xFF;
+					int r = (newValue[ndx]>>16) & 0xFF;
+					int a = (newValue[ndx]>>24) & 0xFF;
+					
+					MyImage.setRedAt(r, col, row);
+					MyImage.setGreenAt(g, col, row);
+					MyImage.setBlueAt(b, col, row);
+					MyImage.setAlphaAt(a, col, row);
+				}
+				ImageContext.putImageData(MyImage,0,0);
+				
+				if(DEBUGGING)
+					Trace.println("context put");
+			}
+		});
+		m_Map.Mode.ChangedEvent.add(new HandleChanged<Integer>()
+		{
+			@Override
+			public void Changed(Integer newValue) throws Exception
+			{
+				if(DEBUGGING)
+					Trace.println("m_Map.Mode.ChangedEvent, new="+newValue);
+				try
+				{
+					switch(newValue)
+					{
+						case 0:
+							ThePanButton0.getElement().getStyle().setProperty("background", "DarkSeaGreen");
+							TheSelectButton1.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							if(TheLineButton2 != null)
+								TheLineButton2.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							if(ThePolyButton3 != null)
+								ThePolyButton3.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							break;
+						case 1:
+							ThePanButton0.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							TheSelectButton1.getElement().getStyle().setProperty("background", "DarkSeaGreen");
+							if(TheLineButton2 != null)
+								TheLineButton2.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							if(ThePolyButton3 != null)
+								ThePolyButton3.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							break;
+						case 2:
+							ThePanButton0.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							TheSelectButton1.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							if(TheLineButton2 != null)
+								TheLineButton2.getElement().getStyle().setProperty("background", "DarkSeaGreen");
+							if(ThePolyButton3 != null)
+								ThePolyButton3.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							break;
+						case 3:
+							ThePanButton0.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							TheSelectButton1.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							if(TheLineButton2 != null)
+								TheLineButton2.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							if(ThePolyButton3 != null)
+								ThePolyButton3.getElement().getStyle().setProperty("background", "DarkSeaGreen");
+							break;
+						default:
+							ThePanButton0.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							TheSelectButton1.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							if(TheLineButton2 != null)
+								TheLineButton2.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							if(ThePolyButton3 != null)
+								ThePolyButton3.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+							break;
+					}
+				}
+				catch(Exception e)
+				{
+					Trace.println("caught Mode, e="+e.getMessage());
+					throw e;
+				}
+			}
+		});
+		
+		m_PathStatus.List.ChangedEvent.add(new HandleChanged<PathStatusClient[]>()
+		{
+			@Override
+			public void Changed(PathStatusClient[] newValue) throws Exception
+			{
+				if(DEBUGGING)
+					Trace.println("m_PathStatus.List.ChangedEvent, n="+newValue.length);
+				
+				TheCombinedArray = new CombinedClient[m_PathConfigs.List.getValue().length];
+				int count = 0;
+				for( PathConfigClient config : m_PathConfigs.List.getValue() )
+				{
+					int id = config.getId();
+					PathStatusClient status = m_PathStatus.LookupById(id);
+					Trace.println("| ["+status.getStatus()+"]");
+					PathResultClient result = m_PathResults.LookupById(id);
+					TheCombinedArray[count++] = new CombinedClient( config, result, status );
+				}
+				
+				ThePathList = Arrays.asList(TheCombinedArray);
+				if(ThePathTable != null)
+				{
+					ThePathTable.setRowCount(ThePathList.size(), true);
+					ThePathTable.setRowData(0, ThePathList);
+					ThePathTable.redraw();
+				}
+			}
+		});
+		
+
+		m_PathResults.List.ChangedEvent.add(new HandleChanged<PathResultClient[]>()
+		{
+			@Override
+			public void Changed(PathResultClient[] newValue) throws Exception
+			{
+				if(DEBUGGING)
+					Trace.println("m_PathResults.List.ChangedEvent, n="+newValue.length);
+
+				TheCombinedArray = new CombinedClient[m_PathConfigs.List.getValue().length];
+				int count=0;
+				for( PathConfigClient config : m_PathConfigs.List.getValue() )
+				{
+					int id = config.getId();
+					PathResultClient result = m_PathResults.LookupById(id);
+					PathStatusClient status = m_PathStatus.LookupById(id);
+					TheCombinedArray[count++] = new CombinedClient( config, result, status );
+				}
+				
+				ThePathList = Arrays.asList(TheCombinedArray);
+				if(ThePathTable != null)
+				{
+					ThePathTable.setRowCount(ThePathList.size(), true);
+					ThePathTable.setRowData(0, ThePathList);
+					ThePathTable.redraw();
+				}
+				
+				m_The2DMap.setPathData(newValue);
+				
+				if(newValue != null)
+				{
+					TheScene.RenderPaths(
+						newValue,
+						m_SatFile.FocusCenter.getValue(),
+						m_SatFile.FocusDegrees.getValue(),
+						m_SatFile.DataDimensions.getValue()
+						);
+				}				
+			}
+		});
+		
+		if(m_Constraints.List.getValue() != null)
+			m_The2DMap.setConstraintData(m_Constraints.List.getValue());
+		m_Constraints.List.ChangedEvent.add(new HandleChanged<Constraint[]>()
+		{
+			@Override
+			public void Changed(Constraint[] newValue) throws Exception
+			{
+				TheConstraintsList = Arrays.asList(newValue);
+				if(TheConstraintsTable != null)
+				{
+					TheConstraintsTable.setRowCount(TheConstraintsList.size(), true);
+					TheConstraintsTable.setRowData(0, TheConstraintsList);
+					TheConstraintsTable.redraw();
+				}
+				
+				m_The2DMap.setConstraintData(newValue);
+			}
+		});
+		
+		m_PathConfigs.List.ChangedEvent.add(new HandleChanged<PathConfigClient[]>()
+		{
+			@Override
+			public void Changed(PathConfigClient[] newValue) throws Exception
+			{
+				if(DEBUGGING)
+					Trace.println("m_PathConfigs.List.ChangedEvent");
+				TheCombinedArray = new CombinedClient[newValue.length];
+				int count=0;
+				for( PathConfigClient config : newValue )
+				{
+					int id = config.getId();
+					PathResultClient result = m_PathResults.LookupById(id);
+					PathStatusClient status = m_PathStatus.LookupById(id);
+					TheCombinedArray[count++] = new CombinedClient( config, result, status );
+				}
+				ThePathList = Arrays.asList(TheCombinedArray);
+				if(ThePathTable != null)
+				{
+					ThePathTable.setRowCount(ThePathList.size(), true);
+					ThePathTable.setRowData(0, ThePathList);
+					ThePathTable.redraw();
+				}
+				
+				if(newValue != null && newValue.length > 0)
+					m_The2DMap.setEndPtData(newValue);
+			}
+		});
+		
+		m_Map.RectangleData.ChangedEvent.add(new HandleChanged<Double[]>()
+		{
+			@Override
+			public void Changed(Double[] newValue) throws Exception
+			{
+				if(DEBUGGING)
+					Trace.println("m_Map.RectangleData.ChangedEvent");
+				
+				if(newValue != null && newValue.length == 4)
+					m_The2DMap.setRectangleData(new double[] {
+						newValue[0].doubleValue(),
+						newValue[1].doubleValue(),
+						newValue[2].doubleValue(),
+						newValue[3].doubleValue()}
+						);
+			}
+		});
+		
+		Poly_Capture = false;
+		PolyPointsList = new ArrayList<Point>();
+		PolyPointsCount = 0;
+	}
+	
+	@Override
+	public void onModuleLoad() 
+	{
+		Trace.println("CaloricPath::onModuleLoad(), * * * CLIENT STARTED * * *");
+		
+		if( WITH_BUTTON_INITIALIZATION==false )
+			initializeRpcObjects();
+		
+		Control2DPanelStack = new Stack<HorizontalPanel>();
+		
+		createPathMenu();
+		createConstraintMenu();
+
+		TheConfigDialog = new ConfigDialog();
+		TheConstraintDialog = new ConstraintDialog();
+		TheAlgorithmDialog = new AlgorithmDialog();
+		
+		TheLatLonFormat = NumberFormat.getFormat("0.00000");
+		
+		buildGuiObjects();
+		if( WITH_BUTTON_INITIALIZATION==true )
+			buildViewPanelButton();
+		else
+			buildViewPanel();
+		buildMenu();
+		
+		assert TheLayout!=null;
+		RootLayoutPanel.get().add(TheLayout);
+		
+		if(m_PathConfigs.List.getValue() != null && m_PathConfigs.List.getValue().length > 0)
+		{
+			TheCombinedArray = new CombinedClient[m_PathConfigs.List.getValue().length];
+			int count=0;
+			for( PathConfigClient config : m_PathConfigs.List.getValue() )
+			{
+				int id = config.getId();
+				PathResultClient result = m_PathResults.LookupById(id);
+				PathStatusClient status = m_PathStatus.LookupById(id);
+				TheCombinedArray[count++] = new CombinedClient( config, result, status );
+			}
+			ThePathList = Arrays.asList(TheCombinedArray);
+			if(ThePathTable != null)
+			{
+				ThePathTable.setRowCount(ThePathList.size(), true);
+				ThePathTable.setRowData(0, ThePathList);
+				ThePathTable.redraw();
+			}
+			m_The2DMap.setPathData(m_PathResults.List.getValue());
+		}
+	}	
+	   
+	private void buildGuiObjects()
+	{
+		if(DEBUGGING)
+			Trace.println("CaloricPath::buildGuiObjects()");
+		
+		TheLayout=new DockLayoutPanel(Unit.PX);
+		TheHeader=new LayoutPanel();
+		TheFooter=new LayoutPanel();
+		TheMenu=new StackLayoutPanel(Unit.PX);
+		TheMain=new LayoutPanel();
+		
+		for (Widget layout : new Widget[] { TheHeader, TheFooter, TheMenu, TheMain } )
+			niceBackground(layout);
+		
+		TheLayout.addNorth(TheHeader, 90);
+		TheLayout.addSouth(TheFooter, 30);
+		//TheLayout.addWest(TheMenu, 160); /* remove for more screen real estate */
+		TheLayout.add(TheMain);
+		
+		m_Title = new Label("[title]");
+		m_Title.getElement().getStyle().setFontSize(2.0, Unit.EM);
+		m_Subtitle = new Label("[sub-title]");
+		m_SubSubTitle = new Label("[sub-sub-title]");
+		VerticalPanel vP = new VerticalPanel();
+		vP.add(m_Title);
+		vP.add(m_Subtitle);
+		vP.add(m_SubSubTitle);
+		
+		TheHeader.add(vP);
+		TheFooter.add(new Label("[footer]"));
+		ThePosition = new TextBox();
+		ThePosition.setWidth("500px");
+		ThePosition.setText("POSITION");
+		TheFooter.add(ThePosition);
+	}
+	
+	private Label m_Title;
+	private Label m_Subtitle ;
+	private Label m_SubSubTitle ;
+
+	private void niceBackground( Widget layout )
+	{
+		layout.getElement().getStyle().setBorderColor("DimGray");
+		layout.getElement().getStyle().setBorderStyle(BorderStyle.SOLID);
+		layout.getElement().getStyle().setBorderWidth(1, Unit.PX);
+		layout.getElement().getStyle().setBackgroundColor("LightGray");
+	}
+	
+	private void buildViewPanelButton()
+	{
+		if(DEBUGGING)
+			Trace.println("CaloricPath::buildViewPanelButton()");
+		
+		assert TheMain != null ;
+		
+		LoadFileButton = new Button("Load Satellite File");
+		LoadFileButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					imageService.createOrigTexture(new AsyncCallback<String>() {
+						public void onFailure(Throwable caught)
+						{
+							Trace.println("createOrigTexture failed, caught: " + caught.getMessage() );
+						}
+
+						public void onSuccess(String result)
+						{
+							if(DEBUGGING)
+								Trace.println( "createOrigTexture succeeded, result: " + result );
+						}
+					});
+					
+					m_SatFile.FileName.setValue("Papua_New_Guinea_Tract");
+					
+					buildViewPanel();
+					TheMain.remove(LoadFileButton);
+					LoadFileButton=null;
+				}
+				catch(Exception e)
+				{
+					Trace.println("load file button failed, e="+e.getMessage());
+				}
+			}
+		} );
+		
+		TheMain.add(LoadFileButton);
+		TheMain.setWidgetLeftWidth(LoadFileButton, 45, Unit.PCT, 20, Unit.PCT);
+		TheMain.setWidgetTopHeight(LoadFileButton, 50, Unit.PCT, 10, Unit.PCT);
+	}
+
+	private void buildViewPanel()
+	{
+		if(DEBUGGING)
+			Trace.println("CaloricPath::buildViewPanel()");
+		
+		assert TheMain != null;
+
+		m_The2DMap.init();
+		if(ImageLayer == null)
+		{
+			ImageLayer = Canvas.createIfSupported();
+			ImageLayer.setCoordinateSpaceHeight(m_Map.ClientSize.getValue()[1]);
+			ImageLayer.setCoordinateSpaceWidth(m_Map.ClientSize.getValue()[0]);
+		}
+		
+		if(InteractiveLayer == null)
+		{
+			InteractiveLayer = Canvas.createIfSupported();
+			InteractiveLayer.setCoordinateSpaceHeight(m_Map.ClientSize.getValue()[1]);
+			InteractiveLayer.setCoordinateSpaceWidth(m_Map.ClientSize.getValue()[0]);
+		}
+		
+		InteractiveLayer.addMouseMoveHandler(InteractiveLayer_MouseMoveHandler);
+		
+		InteractiveLayer.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				switch(m_Map.Mode.getValue())
+				{
+					case 0:
+						if(DEBUGGING)
+							Trace.println("onClick mode 0");
+						break;
+					case 1:
+						if(DEBUGGING)
+							Trace.println("onClick mode 1");
+						break;
+					case 2:
+						if(DEBUGGING)
+							Trace.println("onClick mode 2");
+						if(PolyPointsCount == 0)
+						{
+							Poly_Capture = true;
+							PolyPointsList.add(new Point(event.getX(), event.getY()));
+							if(DEBUGGING)
+								Trace.println("adding "+event.getX()+" "+event.getY());
+							PolyPointsCount++;
+							if(DEBUGGING)
+								Trace.println("count="+PolyPointsCount+", capture="+Poly_Capture);
+						}
+						else if(PolyPointsCount == 1)
+						{
+							//InteractiveContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+							PolyPointsList.add(new Point(event.getX(), event.getY()));
+							if(DEBUGGING)
+								Trace.println("adding "+event.getX()+" "+event.getY());
+							PolyPointsCount++;
+							// now draw the single line segment
+							InteractiveContext.setLineWidth(5);
+							InteractiveContext.setStrokeStyle(CssColor.make(204,255,51));
+							InteractiveContext.beginPath();
+							InteractiveContext.moveTo(PolyPointsList.get(0).getX(), PolyPointsList.get(0).getY());
+							InteractiveContext.lineTo(PolyPointsList.get(1).getX(), PolyPointsList.get(1).getY());
+							InteractiveContext.closePath();
+							InteractiveContext.stroke();
+							if(DEBUGGING)
+								Trace.println("count="+PolyPointsCount);
+						}
+						else //PolyPointsCount >= 2
+						{
+							if(isPointEndingLine(InteractiveContext, PolyPointsList, PolyPointsCount, event.getX(), event.getY()))
+							{
+								if(DEBUGGING)
+									Trace.println("new click IS in path");
+								drawExistingSegments(InteractiveContext, PolyPointsList, PolyPointsCount);
+								// Add new constraint and send to server
+								try
+								{
+									int n = 0;
+									Double[] data = new Double[2*PolyPointsCount];
+									for(int i = 0; i < PolyPointsCount; i++)
+									{
+										data[n++] = colToLon(PolyPointsList.get(i).getX());
+										data[n++] = rowToLat(PolyPointsList.get(i).getY());
+									}
+									
+									m_Constraints.AddSingle(new Constraint(
+										Constraint.ConstraintType.LineConstraint,
+										Constraint.DistributionType.BinaryDistribution,
+										5000.0,
+										1000000.0,
+										0,
+										"NewLine"+ConstraintsCounter++,
+										m_Constraints.getUniqueId(),
+										data
+										));
+								}
+								catch(Exception e)
+								{
+									Trace.println("CaloricPath::Error sending new line constraint, e="+e.getMessage());
+								}
+								
+								Poly_Capture = false;
+								PolyPointsCount = 0;
+								PolyPointsList.clear();
+								if(DEBUGGING)
+									Trace.println("done with path");
+							}
+							else
+							{
+								if(DEBUGGING)
+									Trace.println("new click is NOT in path");
+								PolyPointsCount++;
+								PolyPointsList.add(new Point(event.getX(),event.getY()));
+								InteractiveContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+								drawExistingSegments(InteractiveContext, PolyPointsList, PolyPointsCount);
+								if(DEBUGGING)
+									Trace.println("count="+PolyPointsCount);
+							}
+						}
+						break;
+					case 3:
+						if(PolyPointsCount == 0)
+						{
+							Poly_Capture = true;
+							PolyPointsList.add(new Point(event.getX(), event.getY()));
+							if(DEBUGGING)
+								Trace.println("adding "+event.getX()+" "+event.getY());
+							PolyPointsCount++;
+							if(DEBUGGING)
+								Trace.println("count="+PolyPointsCount+", capture="+Poly_Capture);
+						}
+						else if(PolyPointsCount == 1)
+						{
+							//InteractiveContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+							PolyPointsList.add(new Point(event.getX(), event.getY()));
+							if(DEBUGGING)
+								Trace.println("adding "+event.getX()+" "+event.getY());
+							PolyPointsCount++;
+							// now draw the single line segment
+							drawExistingSegments(InteractiveContext, PolyPointsList, PolyPointsCount);
+							if(DEBUGGING)
+								Trace.println("count="+PolyPointsCount);
+						}
+						else if(PolyPointsCount == 2)
+						{
+							PolyPointsList.add(new Point(event.getX(), event.getY()));
+							if(DEBUGGING)
+								Trace.println("adding "+event.getX()+" "+event.getY());
+							PolyPointsCount++;
+							//now draw the two line segments
+							drawExistingSegments(InteractiveContext, PolyPointsList, PolyPointsCount);
+							if(DEBUGGING)
+								Trace.println("count="+PolyPointsCount);
+						}
+						else //PolyPointsCount >= 3
+						{
+							if(isPointEndingLine(InteractiveContext, PolyPointsList, PolyPointsCount, event.getX(), event.getY()))
+							{
+								if(DEBUGGING)
+									Trace.println("new click IS in path");
+								drawExistingSegmentsAndClosePoly(InteractiveContext, PolyPointsList, PolyPointsCount);
+								
+								// Add new constraint and send to server
+								try
+								{
+									int n = 0;
+									Double[] data = new Double[2*PolyPointsCount];
+									for(int i = 0; i < PolyPointsCount; i++)
+									{
+										data[n++] = colToLon(PolyPointsList.get(i).getX());
+										data[n++] = rowToLat(PolyPointsList.get(i).getY());
+									}
+									
+									m_Constraints.AddSingle(new Constraint(
+										Constraint.ConstraintType.PolygonConstraint,
+										Constraint.DistributionType.BinaryDistribution,
+										5000.0,
+										1000000.0,
+										0,
+										"NewPoly"+ConstraintsCounter++,
+										m_Constraints.getUniqueId(),
+										data
+										));
+								}
+								catch(Exception e)
+								{
+									Trace.println("CaloricPath::Error sending new polygon constraint, e="+e.getMessage());
+								}
+								
+								Poly_Capture = false;
+								PolyPointsCount = 0;
+								PolyPointsList.clear();
+								if(DEBUGGING)
+									Trace.println("done with path");
+							}
+							else
+							{
+								if(DEBUGGING)
+									Trace.println("new click is NOT in path");
+								PolyPointsCount++;
+								PolyPointsList.add(new Point(event.getX(),event.getY()));
+								InteractiveContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+								drawExistingSegments(InteractiveContext, PolyPointsList, PolyPointsCount);
+								if(DEBUGGING)
+									Trace.println("count="+PolyPointsCount);
+							}
+						}
+						break;
+					default:
+						if(DEBUGGING)
+							Trace.println("onClick default");
+						break;
+				}
+			}
+		});
+		InteractiveLayer.addMouseDownHandler(new MouseDownHandler()
+		{
+			public void onMouseDown(MouseDownEvent event)
+			{
+				startXPos = event.getX();
+				startYPos = event.getY();
+				if(m_Map.Mode.getValue() == 1)
+					m_The2DMap.clearRectangleData();
+			}
+		});
+		InteractiveLayer.addMouseUpHandler(new MouseUpHandler()
+		{
+			public void onMouseUp(MouseUpEvent event)
+			{
+				if(startXPos != -1 && startYPos != -1)
+				{
+					int x = event.getX();
+					int y = event.getY();
+					int w = event.getX() - startXPos;
+					int h = event.getY() - startYPos;
+					switch(m_Map.Mode.getValue())
+					{
+						case 0:
+							/* display shifted image */
+							ImageContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+							ImageContext.putImageData(MyImage,w,h);
+							m_The2DMap.shift(w,h);
+							Double[] curr = m_Map.ViewArea.getValue();
+							double degLonPerCol = curr[2] / m_Map.ClientSize.getValue()[0];
+							double degLatPerRow = curr[3] / m_Map.ClientSize.getValue()[1];
+							double newLeft = curr[0] - w*degLonPerCol;
+							double newTop = curr[1] + h*degLatPerRow;
+							Double[] NSEW = m_SatFile.FileStatus.getValue().getNSEWDegrees();
+							try
+							{
+								if(newLeft < NSEW[3])
+								{
+									newLeft = NSEW[3];
+								}
+								if(newTop > NSEW[0])
+								{
+									newTop = NSEW[0];
+								}
+								if(newLeft + curr[2] > NSEW[2])
+								{
+									newLeft = NSEW[2] - curr[2];
+								}
+								if(newTop - curr[3] < NSEW[1])
+								{
+									newTop = NSEW[1] + curr[3];
+								}
+								m_Map.ViewArea.setValue(new Double[] {newLeft, newTop, curr[2], curr[3]});
+							}
+							catch(Exception e)
+							{
+								Trace.println("pan image failed setting new view area, e="+e.getMessage());
+							}
+							finally
+							{
+								startXPos = -1;
+								startYPos = -1;
+							}
+							break;
+						case 1:
+							/* display rectangle */
+							InteractiveContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+							InteractiveContext.setLineWidth(5);
+							InteractiveContext.setStrokeStyle(CssColor.make(204,255,51));
+							InteractiveContext.beginPath();
+							InteractiveContext.rect(startXPos, startYPos, w, h);
+							InteractiveContext.closePath();
+							InteractiveContext.stroke();
+							
+							/* Get focus area and send to server to render */
+							double top = 0.0, left = 0.0, bot = 0.0, right = 0.0;
+							if(w < 0 && h < 0)
+							{
+								top = rowToLat(y);
+								left = colToLon(x);
+								bot = rowToLat(startYPos);
+								right = colToLon(startXPos);
+							}
+							else if(w < 0)
+							{
+								top = rowToLat(startYPos);
+								left = colToLon(x);
+								bot = rowToLat(y);
+								right = colToLon(startXPos);
+							}
+							else if(h < 0)
+							{
+								top = rowToLat(y);
+								left = colToLon(startXPos);
+								bot = rowToLat(startYPos);
+								right = colToLon(x);
+							}
+							else
+							{
+								top = rowToLat(startYPos);
+								left = colToLon(startXPos);
+								bot = rowToLat(y);
+								right = colToLon(x);
+							}
+							
+							//send rectangle data
+							try
+							{
+								m_Map.RectangleData.setValue(new Double[] {left, top, right, bot});
+							}
+							catch(Exception e)
+							{
+								Trace.println("CaloricPath::m_Map.RectangleData.setValue failed, e="+e.getMessage());
+							}
+							
+							InteractiveContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+							
+							double height = Math.abs(bot - top);
+							double width = right - left;
+							try
+							{
+								//start creating texture mapping image
+								imageService.createTexture(top, left, width, height, new AsyncCallback<String>() {
+									public void onFailure(Throwable caught)
+									{
+										Trace.println("createTexture failed, caught: " + caught.getMessage() );
+									}
+
+									public void onSuccess(String result)
+									{
+										if(DEBUGGING)
+											Trace.println( "createTexture succeeded, result: " + result );
+									}
+								});
+								
+								if(DEBUGGING)
+									Trace.println("setting center: ("+(top - (height / 2.0))+", "+(left + (width / 2.0))+")");
+								m_SatFile.FocusCenter.setValue(new Double[] {top - (height / 2.0), left + (width / 2.0)});
+								if(DEBUGGING)
+									Trace.println("setting degrees: ("+height+", "+width+")");
+								m_SatFile.FocusDegrees.setValue(new Double[] {height, width});
+								if(DEBUGGING)
+									Trace.println("done setting params");
+							}
+							catch(Exception e)
+							{
+								Trace.println("select render area failed sending to server,e="+e.getMessage());
+							}
+							finally
+							{
+								startXPos = -1;
+								startYPos = -1;
+							}
+							break;
+						case 2:
+							/* draw line: only click handler, not click & drag */
+							break;
+						default:
+							/* do nothing lol */
+							break;
+					}
+				}
+			}
+		});
+		
+		CanvasElement imageElem = ImageLayer.getCanvasElement();
+		ImageContext = imageElem.getContext2d();
+		MyImage = ImageContext.createImageData(m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+		
+		CanvasElement interactiveElem = InteractiveLayer.getCanvasElement();
+		InteractiveContext = interactiveElem.getContext2d();
+		
+		HorizontalPanel Control2DPanel = new HorizontalPanel();
+		Control2DPanelStack.push(Control2DPanel);
+		
+		VerticalPanel ZoomPanel = new VerticalPanel();
+		
+		/* <div>Icons made by <a href="http://www.flaticon.com/authors/eleonor-wang" title="Eleonor Wang">Eleonor Wang</a> from <a href="http://www.flaticon.com" title="Flaticon">www.flaticon.com</a> is licensed by <a href="http://creativecommons.org/licenses/by/3.0/" title="Creative Commons BY 3.0" target="_blank">CC 3.0 BY</a></div> */
+		Image zoomInImage = new Image("./images/icons/plus.png");
+		Button ZoomInButton = new Button();
+		ZoomInButton.getElement().appendChild(zoomInImage.getElement());
+		ZoomInButton.setSize("2em", "2em");
+		ZoomInButton.getElement().getStyle().setProperty("padding", "3px 3px");
+		ZoomInButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					Double[] curr = m_Map.ViewArea.getValue();
+					
+					/* 0: leftLong, 1: topLat, 2: widthLong, 3: heightLat */
+					m_Map.ViewArea.setValue(new Double[] {
+						curr[0] + (0.25 * curr[2]),
+						curr[1] - (0.25 * curr[3]),
+						0.5 * curr[2],
+						0.5 * curr[3]
+						});
+				}
+				catch(Exception e)
+				{
+					Trace.println("zoomInButton failed, e="+e.getMessage());
+				}
+			}
+		} );
+		
+		ZoomPanel.add(ZoomInButton);
+		
+		/* <div>Icons made by <a href="http://www.flaticon.com/authors/eleonor-wang" title="Eleonor Wang">Eleonor Wang</a> from <a href="http://www.flaticon.com" title="Flaticon">www.flaticon.com</a> is licensed by <a href="http://creativecommons.org/licenses/by/3.0/" title="Creative Commons BY 3.0" target="_blank">CC 3.0 BY</a></div> */
+		Image zoomOutImage = new Image("./images/icons/minus.png");
+		Button ZoomOutButton = new Button();
+		ZoomOutButton.getElement().appendChild(zoomOutImage.getElement());
+		ZoomOutButton.setSize("2em", "2em");
+		ZoomOutButton.getElement().getStyle().setProperty("padding", "3px 3px");
+		ZoomOutButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					Double[] curr = m_Map.ViewArea.getValue();
+					/* 0: leftLong, 1: topLat, 2: widthLong, 3: heightLat */
+					m_Map.ViewArea.setValue(new Double[] {
+						curr[0] - (0.5 * curr[2]),
+						curr[1] + (0.5 * curr[3]),
+						2.0 * curr[2],
+						2.0 * curr[3]
+						});
+				}
+				catch(Exception e)
+				{
+					Trace.println("zoomOutButton failed, e="+e.getMessage());
+				}
+			}
+		} );
+		
+		ZoomPanel.add(ZoomOutButton);
+		Control2DPanel.add(ZoomPanel);
+		
+		/* <div>Icons made by <a href="http://www.flaticon.com/authors/madebyoliver" title="Madebyoliver">Madebyoliver</a> from <a href="http://www.flaticon.com" title="Flaticon">www.flaticon.com</a> is licensed by <a href="http://creativecommons.org/licenses/by/3.0/" title="Creative Commons BY 3.0" target="_blank">CC 3.0 BY</a></div> */	
+		ThePanButton0 = new Button();
+		Image panButtonImage = new Image("./images/icons/hold.png");
+		ThePanButton0.getElement().appendChild(panButtonImage.getElement());
+		ThePanButton0.getElement().getStyle().setProperty("background", "DarkSeaGreen");
+		ThePanButton0.setSize("4em", "4em");
+		ThePanButton0.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_Map.Mode.setValue(0);
+				}
+				catch(Exception e)
+				{
+					Trace.println("pan button failed,e="+e.getMessage());
+				}
+			}
+		});
+		
+		Control2DPanel.add(ThePanButton0);
+		
+		/* <div>Icons made by <a href="http://www.freepik.com" title="Freepik">Freepik</a> from <a href="http://www.flaticon.com" title="Flaticon">www.flaticon.com</a> is licensed by <a href="http://creativecommons.org/licenses/by/3.0/" title="Creative Commons BY 3.0" target="_blank">CC 3.0 BY</a></div> */
+		TheSelectButton1 = new Button();
+		Image selectButtonImage = new Image("./images/icons/select.png");
+		TheSelectButton1.getElement().appendChild(selectButtonImage.getElement());
+		TheSelectButton1.setSize("4em", "2em");
+		TheSelectButton1.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				if(DEBUGGING)
+					Trace.println("selected the select button");
+				try
+				{
+					m_Map.Mode.setValue(1);
+				}
+				catch(Exception e)
+				{
+					Trace.println("select render region button failed,e="+e.getMessage());
+				}
+			}
+		});
+		TheSelectButton1.addDoubleClickHandler(new DoubleClickHandler()
+		{
+			public void onDoubleClick(DoubleClickEvent event)
+			{
+				try
+				{
+					Double[] area = m_Map.ViewArea.getValue();
+					double top = area[1], left = area[0], width = area[2], height = area[3];
+					
+					//start creating texture mapping image
+					imageService.createTexture(top, left, width, height, new AsyncCallback<String>() {
+						public void onFailure(Throwable caught)
+						{
+							Trace.println("createTexture failed, caught: " + caught.getMessage() );
+						}
+
+						public void onSuccess(String result)
+						{
+							if(DEBUGGING)
+								Trace.println( "createTexture succeeded, result: " + result );
+						}
+					});
+					
+					m_SatFile.FocusCenter.setValue(new Double[] {top - (height / 2.0), left + (width / 2.0)});
+					m_SatFile.FocusDegrees.setValue(new Double[] {height, width});
+					
+					if(m_The2DMap != null)
+						m_The2DMap.clearRectangleData();
+				}
+				catch(Exception e)
+				{
+					Trace.println("double click select render region button failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		
+		Button resetButton = new Button("Reset");
+		resetButton.setSize("4em", "2em");
+		resetButton.getElement().getStyle().setProperty("padding", "1px");
+		resetButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					Double[] centerDeg = m_SatFile.FileStatus.getValue().getCenter(); /* lat, long*/
+					Double[] extentsDeg = m_SatFile.FileStatus.getValue().getDegrees(); /* height(lat), width(long) */
+					double leftLong = centerDeg[1] - (0.5 * extentsDeg[1]);
+					double topLat = centerDeg[0] + (0.5 * extentsDeg[0]);
+					m_Map.ViewArea.setValue(new Double[] {leftLong, topLat, extentsDeg[1], extentsDeg[0]});;
+				}
+				catch (Exception e)
+				{
+					Trace.println("reset button failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		VerticalPanel RenderControlsPanel = new VerticalPanel();
+		RenderControlsPanel.add(TheSelectButton1);
+		RenderControlsPanel.add(resetButton);
+		Control2DPanel.add(RenderControlsPanel);
+		
+		Button managePathsButton = new Button("Manage Paths");
+		managePathsButton.setSize("6em", "4em");
+		managePathsButton.getElement().getStyle().setProperty("padding", "1px");
+		managePathsButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					displayPathMenu();
+				}
+				catch(Exception e)
+				{
+					Trace.println("managePathsButton failed, e="+e.getMessage());
+				}
+			}
+		} );
+		
+		Control2DPanel.add(managePathsButton);
+		
+		Button manageConstraintsButton = new Button("Manage Constraints");
+		manageConstraintsButton.setSize("6em", "4em");
+		manageConstraintsButton.getElement().getStyle().setProperty("padding", "1px");
+		manageConstraintsButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					displayConstraintMenu();
+				}
+				catch(Exception e)
+				{
+					Trace.println("manageConstraintsButton failed, e="+e.getMessage());
+				}
+			}
+		} );
+		
+		Control2DPanel.add(manageConstraintsButton);
+		
+		LayoutPanel RightLayers = new LayoutPanel();
+		RenderPanel = new RenderingPanel();
+		RenderPanel.setBackground(0x111111);
+		TheScene = new DemoScene03();
+		RenderPanel.setAnimatedScene(TheScene);
+		
+		Button moveInButton = new Button("^");		//("\u2191");
+		moveInButton.setSize("2em", "2em");
+		moveInButton.getElement().getStyle().setProperty("padding", "0px");
+		moveInButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_View.View.setValue(TheScene.moveIn());
+				}
+				catch (Exception e)
+				{
+					Trace.println("CaloricPath::m_View.View.setValue failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		Button moveOutButton = new Button("v");		//("\u2193");
+		moveOutButton.setSize("2em", "2em");
+		moveOutButton.getElement().getStyle().setProperty("padding", "0px");
+		moveOutButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_View.View.setValue(TheScene.moveOut());
+				}
+				catch (Exception e)
+				{
+					Trace.println("CaloricPath::m_View.View.setValue failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		Button moveLeftButton = new Button("<");	//("\u2190");
+		moveLeftButton.setSize("2em", "2em");
+		moveLeftButton.getElement().getStyle().setProperty("padding", "0px");
+		moveLeftButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_View.View.setValue(TheScene.moveLeft());
+				}
+				catch (Exception e)
+				{
+					Trace.println("CaloricPath::m_View.View.setValue failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		Button moveRightButton = new Button(">");	//("\u2192");
+		moveRightButton.setSize("2em", "2em");
+		moveRightButton.getElement().getStyle().setProperty("padding", "0px");
+		moveRightButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_View.View.setValue(TheScene.moveRight());
+				}
+				catch (Exception e)
+				{
+					Trace.println("CaloricPath::m_View.View.setValue failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		Button resetViewButton = new Button();		//("\u21bb"); // refresh symbol
+		resetViewButton.setSize("2em",  "2em");
+		resetViewButton.getElement().getStyle().setProperty("padding", "0px");
+		resetViewButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_View.View.setValue(TheScene.resetPosition());
+				}
+				catch (Exception e)
+				{
+					Trace.println("CaloricPath::m_View.View.setValue failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		Button rotateUpButton = new Button("^");	//("\u21e1");
+		rotateUpButton.setSize("2em", "2em");
+		rotateUpButton.getElement().getStyle().setProperty("padding", "0px");
+		rotateUpButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_View.View.setValue(TheScene.rotateUp());
+				}
+				catch (Exception e)
+				{
+					Trace.println("CaloricPath::m_View.View.setValue failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		Button rotateDownButton = new Button("v");	//("\u21e3");
+		rotateDownButton.setSize("2em", "2em");
+		rotateDownButton.getElement().getStyle().setProperty("padding", "0px");
+		rotateDownButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_View.View.setValue(TheScene.rotateDown());
+				}
+				catch (Exception e)
+				{
+					Trace.println("CaloricPath::m_View.View.setValue failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		Button rotateLeftButton = new Button("<");	//("\u21e0");
+		rotateLeftButton.setSize("2em", "2em");
+		rotateLeftButton.getElement().getStyle().setProperty("padding", "0px");
+		rotateLeftButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_View.View.setValue(TheScene.rotateLeft());
+				}
+				catch (Exception e)
+				{
+					Trace.println("CaloricPath::m_View.View.setValue failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		Button rotateRightButton = new Button(">");	//("\u21e2");
+		rotateRightButton.setSize("2em", "2em");
+		rotateRightButton.getElement().getStyle().setProperty("padding", "0px");
+		rotateRightButton.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_View.View.setValue(TheScene.rotateRight());
+				}
+				catch (Exception e)
+				{
+					Trace.println("CaloricPath::m_View.View.setValue failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		Button resetViewButton2 = new Button();		//("\u21bb"); // refresh symbol
+		resetViewButton2.setSize("2em",  "2em");
+		resetViewButton2.getElement().getStyle().setProperty("padding", "0px");
+		resetViewButton2.addClickHandler(new ClickHandler()
+		{
+			public void onClick(ClickEvent event)
+			{
+				try
+				{
+					m_View.View.setValue(TheScene.resetPosition());
+				}
+				catch (Exception e)
+				{
+					Trace.println("CaloricPath::m_View.View.setValue failed, e="+e.getMessage());
+				}
+			}
+		});
+		
+		LayoutPanel RightButtons = new LayoutPanel();
+		
+		int l1 = 16;
+		int l2 = 53;
+		int l3 = 88;
+		int w = 32;
+		
+		RightButtons.add(moveInButton);
+		RightButtons.setWidgetLeftWidth(moveInButton, l2, Unit.PX, w, Unit.PX);
+		RightButtons.setWidgetTopHeight(moveInButton, l1, Unit.PX, w, Unit.PX);
+		
+		RightButtons.add(moveOutButton);
+		RightButtons.setWidgetLeftWidth(moveOutButton, l2, Unit.PX, w, Unit.PX);
+		RightButtons.setWidgetTopHeight(moveOutButton, l3, Unit.PX, w, Unit.PX);
+		
+		RightButtons.add(moveLeftButton);
+		RightButtons.setWidgetLeftWidth(moveLeftButton, l1, Unit.PX, w, Unit.PX);
+		RightButtons.setWidgetTopHeight(moveLeftButton, l2, Unit.PX, w, Unit.PX);
+		
+		RightButtons.add(moveRightButton);
+		RightButtons.setWidgetLeftWidth(moveRightButton, l3, Unit.PX, w, Unit.PX);
+		RightButtons.setWidgetTopHeight(moveRightButton, l2, Unit.PX, w, Unit.PX);
+		
+		RightButtons.add(resetViewButton);
+		RightButtons.setWidgetLeftWidth(resetViewButton, l2, Unit.PX, w, Unit.PX);
+		RightButtons.setWidgetTopHeight(resetViewButton, l2, Unit.PX, w, Unit.PX);
+		
+		//////////////////////////////////////////////////////////////////////////
+		
+		RightButtons.add(rotateUpButton);
+		RightButtons.setWidgetRightWidth(rotateUpButton, l2, Unit.PX, w, Unit.PX);
+		RightButtons.setWidgetTopHeight(rotateUpButton, l1, Unit.PX, w, Unit.PX);
+		
+		RightButtons.add(rotateDownButton);
+		RightButtons.setWidgetRightWidth(rotateDownButton, l2, Unit.PX, w, Unit.PX);
+		RightButtons.setWidgetTopHeight(rotateDownButton, l3, Unit.PX, w, Unit.PX);
+		
+		RightButtons.add(rotateLeftButton);
+		RightButtons.setWidgetRightWidth(rotateLeftButton, l3, Unit.PX, w, Unit.PX);
+		RightButtons.setWidgetTopHeight(rotateLeftButton, l2, Unit.PX, w, Unit.PX);
+		
+		RightButtons.add(rotateRightButton);
+		RightButtons.setWidgetRightWidth(rotateRightButton, l1, Unit.PX, w, Unit.PX);
+		RightButtons.setWidgetTopHeight(rotateRightButton, l2, Unit.PX, w, Unit.PX);
+		
+		RightButtons.add(resetViewButton2);
+		RightButtons.setWidgetRightWidth(resetViewButton2, l2, Unit.PX, w, Unit.PX);
+		RightButtons.setWidgetTopHeight(resetViewButton2, l2, Unit.PX, w, Unit.PX);
+		
+		RightLayers.add(RenderPanel);
+		RightLayers.setWidgetLeftWidth(RenderPanel, 0, Unit.PCT, 100, Unit.PCT);
+		RightLayers.setWidgetTopHeight(RenderPanel, 0, Unit.PCT, 100, Unit.PCT);
+		
+		RightLayers.add(RightButtons);
+		RightLayers.setWidgetLeftWidth(RightButtons, 0, Unit.PCT, 100, Unit.PCT);
+		RightLayers.setWidgetTopHeight(RightButtons, 0, Unit.PCT, 100, Unit.PCT);
+		
+		TheLayersLayout = new LayoutPanel();
+		TheLayersLayout.setPixelSize(m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+		TheLayersLayout.add(ImageLayer);
+		
+		m_The2DMap.setLayout(TheLayersLayout);
+		
+		TheLayersLayout.add(InteractiveLayer);
+		
+		TheLeft2DPanel = new ScrollPanel();
+		TheLeft2DPanel.add(TheLayersLayout);
+		
+		// header & footer each 30 pixel height
+		//int bottomOffset = Window.getClientHeight() - 60 - m_Map.ClientSize.getValue()[1];
+		int bottomOffset = 160;
+		
+		SplitLayoutPanel mainLayout = new SplitLayoutPanel();
+		TheTable = new HorizontalPanel();
+		TheTable.add(Control2DPanel);
+		
+		ScrollPanel temp = new ScrollPanel();
+		temp.add(TheTable);
+		
+		mainLayout.addSouth(temp, bottomOffset);
+		//mainLayout.addWest(TheLeft2DPanel, m_Map.ClientSize.getValue()[0]);
+		mainLayout.addWest(TheLeft2DPanel,400);
+		mainLayout.add(RightLayers);
+	
+	   TheMain.add(mainLayout);
+	}
+	
+	private void displayConstraintMenu()
+	{
+		if(DEBUGGING)
+			Trace.println("CaloricPath::displayConstraintMenu()");
+		
+		Control2DPanelStack.push(TheConstraintsPanel);
+		
+		// Create list of constraints data to display
+		TheConstraintsList = Arrays.asList(m_Constraints.List.getValue());
+		
+		// Set the total row count. This isn't strictly necessary, but it affects
+		// paging calculations, so its good habit to keep the row count up to date.
+		TheConstraintsTable.setRowCount(TheConstraintsList.size(), true);
+		
+		// Push the data into the widget
+		TheConstraintsTable.setRowData(0, TheConstraintsList);
+		
+		TheTable.remove(0);
+		TheTable.add(TheConstraintsPanel);
+	}
+	
+	private void createConstraintMenu()
+	{
+		if(DEBUGGING)
+			Trace.println("CaloricPath::createConstraintMenu()");
+		
+		TheConstraintsPanel = new HorizontalPanel();
+		
+		VerticalPanel SeparateButtonsFromElse = new VerticalPanel();
+		HorizontalPanel JustButtons = new HorizontalPanel();
+		
+		Button theBackButton = new Button("Back");
+		theBackButton.setSize("4em", "4em");
+		theBackButton.getElement().getStyle().setProperty("padding", "1px");
+		theBackButton.addClickHandler(ConstraintBackButton_ClickHandler);
+		JustButtons.add(theBackButton);
+		
+		TheLineButton2 = new Button("Draw Line");
+		if(m_Map.Mode.getValue() == 2)
+		{
+			ThePanButton0.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+			TheSelectButton1.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+			TheLineButton2.getElement().getStyle().setProperty("background", "DarkSeaGreen");
+			ThePolyButton3.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+		}
+		TheLineButton2.setSize("6em", "4em");
+		TheLineButton2.getElement().getStyle().setProperty("padding", "1px");
+		TheLineButton2.addClickHandler(ConstraintDrawPolyLineButton_ClickHandler);
+		JustButtons.add(TheLineButton2);
+		
+		ThePolyButton3 = new Button("Draw Polygon");
+		if(m_Map.Mode.getValue() == 3)
+		{
+			ThePanButton0.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+			TheSelectButton1.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+			TheLineButton2.getElement().getStyle().setBackgroundColor("WhiteSmoke");
+			ThePolyButton3.getElement().getStyle().setProperty("background", "DarkSeaGreen");
+		}
+		ThePolyButton3.setSize("6em","4em");
+		ThePolyButton3.getElement().getStyle().setProperty("padding", "1px");
+		ThePolyButton3.addClickHandler(ConstraintDrawPolygonButton_ClickHandler);
+		JustButtons.add(ThePolyButton3);
+		
+		Button editButton = new Button("Edit Selected");
+		editButton.setSize("6em", "4em");
+		editButton.getElement().getStyle().setProperty("padding", "1px");
+		editButton.addClickHandler(ConstraintEditButton_ClickHandler);
+		JustButtons.add(editButton);
+		
+		Button deleteButton = new Button("Delete Selected");
+		deleteButton.setSize("6em", "4em");
+		deleteButton.getElement().getStyle().setProperty("padding", "1px");
+		deleteButton.addClickHandler(ConstraintDeleteButton_ClickHandler);
+		JustButtons.add(deleteButton);
+		
+		SeparateButtonsFromElse.add(JustButtons);
+		
+		// The key provider that allows us to identify Constraints even if a field
+		//	changes. We identify contacts by their unique name.
+		ProvidesKey<Constraint> KEY_PROVIDER = new ProvidesKey<Constraint>()
+		{
+			@Override
+			public Object getKey(Constraint item)
+			{
+				return item.getName();
+			}
+		};
+		  
+		// Create a CellTable
+		TheConstraintsTable = new CellTable<Constraint>(KEY_PROVIDER);
+		TheConstraintsTable.setKeyboardSelectionPolicy(KeyboardSelectionPolicy.ENABLED);
+		
+		// Add a name column
+		EditTextCell nameCell = new EditTextCell();
+		Column<Constraint, String> nameColumn = new Column<Constraint, String>(nameCell)
+		{
+			@Override
+			public String getValue(Constraint c)
+			{
+				return c.getName();
+			}
+		};
+		TheConstraintsTable.addColumn(nameColumn, "Label");
+		
+		// Add a color column
+		TextColumn<Constraint> colorColumn = new TextColumn<Constraint>()
+		{
+			@Override
+			public String getValue(Constraint c)
+			{
+				return Util.ColorStrings[c.getColor()];
+			}
+		};
+		TheConstraintsTable.addColumn(colorColumn, "Color");
+		
+		// Add an impact column
+		TextColumn<Constraint> impactColumn = new TextColumn<Constraint>()
+		{
+			@Override
+			public String getValue(Constraint c)
+			{
+				return c.getDistance().toString();
+			}
+		};
+		TheConstraintsTable.addColumn(impactColumn, "Impact (m)");
+
+		
+		// Add a distribution column (drop down)
+		TextColumn<Constraint> distributionColumn = new TextColumn<Constraint>()
+		{
+			@Override
+			public String getValue(Constraint c)
+			{
+				return Constraint.DistributionTypeStrings[c.getDistribution().ordinal()];
+			}
+		};
+		TheConstraintsTable.addColumn(distributionColumn, "Distribution");
+		
+		// Add a type column
+		TextColumn<Constraint> typeColumn = new TextColumn<Constraint>()
+		{
+			@Override
+			public String getValue(Constraint c)
+			{
+				return Constraint.ConstraintTypeStrings[c.getType().ordinal()];
+			}
+		};
+		TheConstraintsTable.addColumn(typeColumn, "Type");
+		
+//		// Add cost column
+//		EditTextCell costCell = new EditTextCell();
+//		
+//		Column<Constraint, String> costColumn = new Column<Constraint, String>(costCell)
+//		{
+//			@Override
+//			public String getValue(Constraint c)
+//			{
+//				return c.getCost().toString();
+//			}
+//		};
+//		TheConstraintsTable.addColumn(costColumn, "Cost");
+		
+		// Add a selection model to handle user selection
+		final SingleSelectionModel<Constraint> selectionModel = new SingleSelectionModel<Constraint>();
+		TheConstraintsTable.setSelectionModel(selectionModel);
+		selectionModel.addSelectionChangeHandler(new SelectionChangeEvent.Handler()
+		{
+			public void onSelectionChange(SelectionChangeEvent event)
+			{
+				Constraint selected = selectionModel.getSelectedObject();
+				if (selected != null)
+				{
+					TheSelectedConstraint = selected;
+				}
+			}
+		});
+		
+		SeparateButtonsFromElse.add(TheConstraintsTable);
+		TheConstraintsPanel.add(SeparateButtonsFromElse);
+	}
+	
+	private ClickHandler ConstraintBackButton_ClickHandler = new ClickHandler()
+	{
+		public void onClick(ClickEvent event)
+		{
+			if(DEBUGGING)
+				Trace.println("CaloricPath::ConstraintBackButton_ClickHandler()");
+			try
+			{
+				Control2DPanelStack.pop();
+				HorizontalPanel beneath = Control2DPanelStack.peek(); // should be main menu
+				
+				TheTable.remove(0);
+				TheTable.add(beneath);
+				
+			} catch(Exception e)
+			{
+				Trace.println("CaloricPath::ConstraintBackButton_ClickHandler failed, e="+e.getMessage());
+			}
+		}
+	};
+	
+	private ClickHandler ConstraintDrawPolyLineButton_ClickHandler = new ClickHandler()
+	{
+		public void onClick(ClickEvent event)
+		{
+			try
+			{
+				m_Map.Mode.setValue(2);
+			}
+			catch(Exception e)
+			{
+				Trace.println("CaloricPath::ConstraintDrawPolyLineButton_ClickHandler failed,e="+e.getMessage());
+			}
+		}
+	};
+	
+	private ClickHandler ConstraintDrawPolygonButton_ClickHandler = new ClickHandler()
+	{
+		public void onClick(ClickEvent event)
+		{
+			try
+			{
+				m_Map.Mode.setValue(3);
+			}
+			catch(Exception e)
+			{
+				Trace.println("CaloricPath::ConstraintDrawPolygonButton_ClickHandler failed,e="+e.getMessage());
+			}
+		}
+	};
+	
+	private ClickHandler ConstraintEditButton_ClickHandler = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			if(DEBUGGING)
+				Trace.println("CaloricPath::ConstraintEditButton_ClickHandler()");
+			
+			if(TheSelectedConstraint == null)
+				Window.alert("Please select a constraint row to edit.");
+			else
+			{
+				Constraint edit = TheSelectedConstraint;
+				TheConstraintDialog.setId(edit.getId());
+				TheConstraintDialog.setName(edit.getName());
+				TheConstraintDialog.setType(
+					edit.getType() == ConstraintType.LineConstraint ? 0 : 1
+					);
+				TheConstraintDialog.setDistribution(
+					edit.getDistribution() == DistributionType.BinaryDistribution ? 0 :
+					edit.getDistribution() == DistributionType.LinearDistribution ? 1 : 2
+					);
+				TheConstraintDialog.setDistance(edit.getDistance());
+//				TheConstraintDialog.setCost(edit.getCost());
+				TheConstraintDialog.setColor(edit.getColor());
+				
+				TheConstraintDialog.OpenForEdit();
+			}
+		}
+	};
+	
+	private ClickHandler ConstraintDeleteButton_ClickHandler = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			if(TheSelectedConstraint == null)
+				Window.alert("Please select a constraint row to delete.");
+			else
+			{
+				if(Window.confirm("Are you sure you would like to delete constraint "+TheSelectedConstraint.getName()))
+				{
+					try
+					{
+						m_Constraints.RemoveById(TheSelectedConstraint.getId());
+					}
+					catch (Exception e)
+					{
+						Trace.println("CaloricPath::ConstraintDeleteButton_ClickHandler RemoveByName failed, e="+e.getMessage());
+					}
+					finally
+					{
+						TheSelectedConstraint = null;
+					}
+				}
+			}
+		}
+	};
+
+    private class CombinedClient
+	{
+		public PathConfigClient m_Cfg;
+		public PathResultClient m_Result;
+		public PathStatusClient m_Status;
+		
+		public CombinedClient( PathConfigClient cfg, PathResultClient result, PathStatusClient status )
+		{
+			m_Cfg=cfg;
+			m_Result=result;
+			m_Status=status;
+		}
+	}
+
+	private void displayPathMenu()
+	{
+		if(DEBUGGING)
+			Trace.println("CaloricPath::displayPathMenu()");
+		
+		Control2DPanelStack.push(ThePathsPanel);
+		
+		// Create list of path configuration data to display
+		if(m_PathConfigs.List.getValue() != null)
+		{
+			TheCombinedArray = new CombinedClient[m_PathConfigs.List.getValue().length];
+			int count=0;
+			for( PathConfigClient config : m_PathConfigs.List.getValue() )
+			{
+				int id = config.getId();
+				PathResultClient result = m_PathResults.LookupById(id);
+				PathStatusClient status = m_PathStatus.LookupById(id);
+				TheCombinedArray[count++] = new CombinedClient( config, result, status );
+			}
+			ThePathList = Arrays.asList(TheCombinedArray);
+			if(ThePathTable != null)
+			{
+				ThePathTable.setRowCount(ThePathList.size(), true);
+				ThePathTable.setRowData(0, ThePathList);
+				ThePathTable.redraw();
+			}
+		}
+		
+		// Set the total row count. This isn't strictly necessary, but it affects
+		// paging calculations, so its good habit to keep the row count up to date.
+		ThePathTable.setRowCount(ThePathList.size(), true);
+		
+		// Push the data into the widget
+		ThePathTable.setRowData(0, ThePathList);
+		
+		TheTable.remove(0);
+		TheTable.add(ThePathsPanel);
+	}
+	
+	private void createPathMenu()
+	{
+		ThePathsPanel = new HorizontalPanel();
+		
+		VerticalPanel SeparateButtonsFromElse = new VerticalPanel();
+		HorizontalPanel JustButtons = new HorizontalPanel();
+		
+		Button theBackButton = new Button("Back");
+		theBackButton.setSize("4em", "4em");
+		theBackButton.getElement().getStyle().setProperty("padding", "1px");
+		theBackButton.addClickHandler(PathBackButton_ClickHandler);
+		JustButtons.add(theBackButton);
+		
+		Button AddPath = new Button("Add Path");
+		AddPath.setSize("6em", "4em");
+		AddPath.getElement().getStyle().setProperty("padding", "1px");
+		AddPath.addClickHandler(PathAddButton_ClickHandler);
+		JustButtons.add(AddPath);
+		
+		Button EditPath = new Button("Edit Selected");
+		EditPath.setSize("6em", "4em");
+		EditPath.getElement().getStyle().setProperty("padding", "1px");
+		EditPath.addClickHandler(PathEditButton_ClickHandler);
+		JustButtons.add(EditPath);
+		
+		Button ExportButton = new Button("Export Selected");
+		ExportButton.setSize("6em", "4em");
+		ExportButton.getElement().getStyle().setProperty("padding", "1px");
+		JustButtons.add(ExportButton);
+		
+		ExportButton.addClickHandler(ExportButton_ClickHandler);
+		
+		Button DeletePath = new Button("Delete Selected");
+		DeletePath.setSize("6em", "4em");
+		DeletePath.getElement().getStyle().setProperty("padding", "1px");
+		DeletePath.addClickHandler(PathDeleteButton_ClickHandler);
+		JustButtons.add(DeletePath);
+		
+		Button EditAlgorithmButton = new Button("Algorithm Properties");
+		EditAlgorithmButton.setSize("6em", "4em");
+		EditAlgorithmButton.getElement().getStyle().setProperty("padding", "1px");
+		EditAlgorithmButton.addClickHandler(EditAlgorithmButton_ClickHandler);
+		JustButtons.add(EditAlgorithmButton);
+		
+		Button TestFourButton = new Button("Test Four Paths");
+		TestFourButton.setSize("6em",  "4em");
+		TestFourButton.getElement().getStyle().setProperty("padding",  "1px");
+		TestFourButton.addClickHandler(PathTestFourButton_ClickHandler);
+		JustButtons.add(TestFourButton);
+		
+		SeparateButtonsFromElse.add(JustButtons);
+		
+		  // The key provider that allows us to identify CombinedClients even if a field
+		  //	changes. We identify contacts by their unique ID.
+		  ProvidesKey<CombinedClient> KEY_PROVIDER_CONFIG = PathKeyProvider;
+		
+		  ThePathTable = new CellTable<CombinedClient>(KEY_PROVIDER_CONFIG);
+		  ThePathTable.setKeyboardSelectionPolicy(KeyboardSelectionPolicy.ENABLED);
+
+		  TextColumn<CombinedClient> nameColumn = new TextColumn<CombinedClient>()
+		  {
+			  @Override
+			  public String getValue(CombinedClient c)
+			  {
+				  return c.m_Cfg.getName();
+			  }
+		  };
+		  ThePathTable.addColumn(nameColumn, "Label");
+	
+		  // Add a start latitude column
+		  TextColumn<CombinedClient> startLatColumn = new TextColumn<CombinedClient>()
+		  {
+			  @Override
+			  public String getValue(CombinedClient c)
+			  {
+				  return TheLatLonFormat.format(c.m_Cfg.getStart()[0]).toString();
+			  }
+		  };
+		  ThePathTable.addColumn(startLatColumn, "Start Latitude");
+		
+		  // Add a start longitude column
+		  TextColumn<CombinedClient> startLongColumn = new TextColumn<CombinedClient>()
+		  {
+			  @Override
+			  public String getValue(CombinedClient p)
+			  {
+				  return TheLatLonFormat.format(p.m_Cfg.getStart()[1]).toString();
+			  }
+		  };
+		  ThePathTable.addColumn(startLongColumn, "Start Longitude");
+		
+		  // Add an end latitude column
+		  TextColumn<CombinedClient> endLatColumn = new TextColumn<CombinedClient>()
+		  {
+			  @Override
+			  public String getValue(CombinedClient p)
+			  {
+				  return TheLatLonFormat.format(p.m_Cfg.getEnd()[0]).toString();
+			  }
+		  };
+		  ThePathTable.addColumn(endLatColumn, "End Latitude");
+	
+		  // Add an end longitude column
+		  TextColumn<CombinedClient> endLongColumn = new TextColumn<CombinedClient>()
+		  {
+			  @Override
+			  public String getValue(CombinedClient p)
+			  {
+				  return TheLatLonFormat.format(p.m_Cfg.getEnd()[1]).toString();
+			  }
+		  };
+		  ThePathTable.addColumn(endLongColumn, "End Longitude");
+
+		  // Add a color column
+		  TextColumn<CombinedClient> colorColumn = new TextColumn<CombinedClient>()
+		  {
+			  @Override
+			  public String getValue(CombinedClient c)
+			  {
+				  return Util.ColorStrings[c.m_Cfg.getColor()];
+			  }
+		  };
+		  ThePathTable.addColumn(colorColumn, "Color");
+
+		  // Add a percent computation completion status column
+		  TextColumn<CombinedClient> statusColumn = new TextColumn<CombinedClient>()
+		  {
+			  @Override
+			  public String getValue(CombinedClient c)
+			  {
+				  if(c.m_Status == null)
+					  return "n/a";
+				  return c.m_Status.getStatus();
+			  }
+		  };
+		
+		  ThePathTable.addColumn(statusColumn, "Status");
+		
+		  // Add a path length column
+		  TextColumn<CombinedClient> lengthColumn = new TextColumn<CombinedClient>()
+		  {
+			  @Override
+			  public String getValue(CombinedClient c)
+			  {
+				  if(c.m_Result == null)
+					  return "n/a";
+				
+				  NumberFormat myComma = NumberFormat.getFormat("###,###,###,##0");
+				  return myComma.format(c.m_Result.getLength()).toString();
+			  }
+		  };
+		  ThePathTable.addColumn(lengthColumn, "Length (m)");
+		
+		  // Add a selection model to handle user selection
+		  ThePathSelectionModel = new SingleSelectionModel<CombinedClient>();
+		  ThePathTable.setSelectionModel(ThePathSelectionModel);
+		  ThePathSelectionModel.addSelectionChangeHandler(ThePathSelectionChangeHandler);
+		
+		  SeparateButtonsFromElse.add(ThePathTable);
+		  ThePathsPanel.add(SeparateButtonsFromElse);
+	}
+	
+	private ClickHandler PathBackButton_ClickHandler = new ClickHandler()
+	{
+		public void onClick(ClickEvent event)
+		{
+			if(DEBUGGING)
+				Trace.println("CaloricPath::PathBackButton_ClickHandler()");
+			try
+			{
+				Control2DPanelStack.pop();
+				HorizontalPanel beneath = Control2DPanelStack.peek(); // should be main menu
+				
+				TheTable.remove(0);
+				TheTable.add(beneath);
+			} catch(Exception e)
+			{
+				Trace.println("CaloricPath::PathBackButton_ClickHandler failed, e="+e.getMessage());
+			}
+		}
+	};
+	
+	
+	private ClickHandler PathAddButton_ClickHandler = new ClickHandler()
+	{
+		public void onClick(ClickEvent event)
+		{
+			if(DEBUGGING)
+				Trace.println("CaloricPath::PathAddButton_ClickHandler()");
+			
+			TheConfigDialog.setDisableAlerts(true);
+
+			TheConfigDialog.setName("NewPath"+PathCounter++);
+			TheConfigDialog.setStartLon(0.0);
+			TheConfigDialog.setStartLat(0.0);
+			TheConfigDialog.setEndLon(0.0);
+			TheConfigDialog.setEndLat(0.0);
+			TheConfigDialog.setColor(0);
+			TheConfigDialog.setDisableAlerts(false);
+			
+			TheConfigDialog.OpenForAdd();
+		}
+	};
+	
+	private ClickHandler PathEditButton_ClickHandler = new ClickHandler()
+	{
+		public void onClick(ClickEvent event)
+		{
+			if(DEBUGGING)
+				Trace.println("CaloricPath::PathEditButton_ClickHandler()");
+			
+			if(TheSelectedPath == null)
+				Window.alert("Please select a path row to edit.");
+			else
+			{
+				PathConfigClient edit = TheSelectedPath.m_Cfg;
+				TheConfigDialog.setId(edit.getId());
+				TheConfigDialog.setName(edit.getName());
+				TheConfigDialog.setStartLat(edit.getStart()[0]);
+				TheConfigDialog.setStartLon(edit.getStart()[1]);
+				TheConfigDialog.setEndLat(edit.getEnd()[0]);
+				TheConfigDialog.setEndLon(edit.getEnd()[1]);
+				TheConfigDialog.setColor(edit.getColor());
+				
+				TheConfigDialog.OpenForEdit();
+			}
+		}
+	};
+	
+	private ClickHandler ExportButton_ClickHandler = new ClickHandler()
+	{
+		public void onClick(ClickEvent event)
+		{
+			if(DEBUGGING)
+				Trace.println("CaloricPath::ExportButton_ClickHandler()");
+			
+			if(TheSelectedPath == null)
+				Window.alert("Please select a path row to delete.");
+			else
+			{
+				if(Window.confirm("Are you sure you would like to export path "+TheSelectedPath.m_Cfg.getName()))
+				{
+					try
+					{
+						m_PathResults.SaveAsGPX.Execute(new String[] { Integer.toString( TheSelectedPath.m_Cfg.getId())  } );
+						ExportQueue.add(TheSelectedPath.m_Cfg.getId());
+					}
+					catch (Exception e)
+					{
+						Trace.println("CaloricPath::ExportButton_ClickHandler SaveAsGPX failed, e="+e.getMessage());
+					}
+				}
+			}
+		}
+	};	
+	
+	private ClickHandler PathDeleteButton_ClickHandler = new ClickHandler()
+	{
+		public void onClick(ClickEvent event)
+		{
+			if(DEBUGGING)
+				Trace.println("CaloricPath::PathDeleteButton_ClickHandler()");
+			
+			if(TheSelectedPath == null)
+				Window.alert("Please select a path row to delete.");
+			else
+			{
+				if(Window.confirm("Are you sure you would like to delete path "+TheSelectedPath.m_Cfg.getName()))
+				{
+					try
+					{
+						m_PathConfigs.RemoveById(TheSelectedPath.m_Cfg.getId());
+					}
+					catch (Exception e)
+					{
+						Trace.println("CaloricPath::PathDeleteButton_ClickHandler RemoveById failed, e="+e.getMessage());
+					}
+					finally
+					{
+						TheSelectedPath = null;
+					}
+				}
+			}
+		}
+	};
+	
+	private ClickHandler EditAlgorithmButton_ClickHandler = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			if(DEBUGGING)
+				Trace.println("CaloricPath::EditAlgorithmButton_ClickHandler()");
+			
+			TheAlgorithmDialog.setAlg(m_PathConfigs.Algorithm.getValue());
+			TheAlgorithmDialog.Open();
+		}
+	};
+	
+	private ClickHandler PathTestFourButton_ClickHandler = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			if(DEBUGGING)
+				Trace.println("CaloricPath::PathTestFourButton_ClickHandler()");
+			
+			try
+			{
+//				m_PathConfigs.AddSingle(new PathConfigClient(
+//					m_PathConfigs.getUniqueId(),
+//					new Double[] {-6.247, 146.539},
+//					new Double[] {-6.328, 146.46},
+//					"DummyPath1",
+//					1
+//					));
+//				
+//				m_PathConfigs.AddSingle(new PathConfigClient(
+//					m_PathConfigs.getUniqueId(),
+//					new Double[] {-6.38, 146.434},
+//					new Double[] {-6.2, 146.652},
+//					"DummyPath2",
+//					2
+//					));
+				
+				
+				Double[] Middle = new Double[] {-5.6,  146.3};
+				
+				Double Lat = Middle[0];
+				Double Lon = Middle[1];
+				int n=0;
+				
+				Lat -= 0.2;
+				Lon += 0.2;
+				
+				ArrayList<PathConfigClient> list = new ArrayList<PathConfigClient>();
+				
+				while(  Lat >= -6.4 && Lon < 147.2 ) 
+				{
+					list.add(new PathConfigClient(
+							n+1,
+							Middle,
+							new Double[] {Lat,Lon},
+							"DummyPath"+Integer.toString(n+1),
+							n%7
+							));
+					
+					Lat -= 0.2;
+					Lon += 0.2;
+					n++;
+				}
+				
+				m_PathConfigs.List.setValue( list.toArray( new PathConfigClient[0] ) );
+				
+			}
+			catch (Exception e)
+			{
+				Trace.println("CaloricPath::PathTestFourButton_ClickHandler failed, e="+e.getMessage());
+			}
+		}
+	};
+	
+	private ProvidesKey<CombinedClient> PathKeyProvider = new ProvidesKey<CombinedClient>()
+	{
+		@Override
+		public Object getKey(CombinedClient item)
+		{
+			return item.m_Cfg.getId();
+		}
+	};
+	
+	private SelectionChangeEvent.Handler ThePathSelectionChangeHandler = new SelectionChangeEvent.Handler()
+	{
+		public void onSelectionChange(SelectionChangeEvent event)
+		{
+			CombinedClient selected = ThePathSelectionModel.getSelectedObject();
+			if (selected != null)
+			{
+				TheSelectedPath = selected;
+			}
+		}
+	};
+	
+	private void buildMenu()
+	{
+		if(DEBUGGING)
+			Trace.println("CaloricPath::buildMenu()");
+		
+		assert TheMenu!=null;
+		
+		FlowPanel exampleCategory = new FlowPanel();
+		niceBackground(exampleCategory);
+		exampleCategory.add( new Label("This is an example category..."));
+		
+		FlowPanel testCategory = new FlowPanel();
+		niceBackground(testCategory);
+		Button testButton = new Button( "Load image test" );
+		testButton.addClickHandler( new ClickHandler() 
+		{
+			public void onClick( ClickEvent event )
+			{
+				try
+				{
+					sendRequestToServer();
+				}
+				catch (Exception e)
+				{
+					Trace.println("sendRequestToServer failed, e="+e.getMessage());
+					e.printStackTrace();
+				}
+			}
+		} );
+		
+		testCategory.add( testButton );
+		
+		testCategory.add( new Label("Start") );
+		testCategory.add( new Label("Latitude") );
+		
+		TextBox startLat = new TextBox();
+		testCategory.add(startLat);
+		
+		testCategory.add( new Label("Longitude") );
+		
+		TextBox startLon = new TextBox();
+		testCategory.add(startLon);
+		
+		testCategory.add( new Label("End") );
+		testCategory.add( new Label("Latitude") );
+		
+		TextBox endLat = new TextBox();
+		testCategory.add(endLat);
+		
+		testCategory.add( new Label("Longitude") );
+		
+		TextBox endLon = new TextBox();
+		testCategory.add(endLon);
+		
+		Button zoomButton = new Button( "Zoom image" );
+		zoomButton.addClickHandler( new ClickHandler()
+		{
+			public void onClick( ClickEvent event )
+			{
+				try
+				{
+					m_SatFile.FocusMiles.setValue( new Double[] { 115.50453248010126/70.0, 71.7918155291268/70.0 } );
+					//m_SatFile.FocusMiles.setValue( new Double[] { 115.50453248010126/8.0, 71.7918155291268/8.0 } );
+					
+				}
+				catch( Exception e )
+				{
+					Trace.println("zoomButton failed, e="+e.getMessage());
+				}
+			}
+		} );
+		
+		testCategory.add(zoomButton);
+		
+		Button panButton = new Button( "Pan Image" );
+		panButton.addClickHandler( new ClickHandler()
+		{
+			public void onClick( ClickEvent event )
+			{
+				try
+				{
+					m_SatFile.FocusCenter.setValue( new Double[] {
+						m_SatFile.FileStatus.getValue().getCenter()[0] + ((7.0/16.0) * m_SatFile.FileStatus.getValue().getDegrees()[0]),
+						m_SatFile.FileStatus.getValue().getCenter()[1] - ((1.0/6.0) * m_SatFile.FileStatus.getValue().getDegrees()[1])
+						} );
+				}
+				catch( Exception e )
+				{
+					Trace.println("panButton failed, e="+e.getMessage());
+				}
+			}
+		} );
+		
+		testCategory.add(panButton);
+						
+		TheMenu.add( testCategory, new Label("Test"), 40 );
+		TheMenu.add( exampleCategory, new Label("Example"), 40 );
+	}
+	
+	private void sendRequestToServer() throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("CaloricPath::sendRequestToServer()");
+
+		m_SatFile.DataMaxCount.setValue(22500);
+		
+		//m_SatFile.DataMaxCount.setValue(11000);
+		
+		//m_SatFile.DataMaxCount.setValue(10000);
+		//m_SatFile.DataMaxCount.setValue(2000);
+		
+		if(DEBUGGING)
+			Trace.println("CaloricPath::sendRequestToServer(), now sending FileName");
+		
+		m_SatFile.FileName.setValue("Papua_New_Guinea_Tract");
+		
+		if(DEBUGGING)
+			Trace.println("CaloricPath::sendRequestToServer(), now sending FocusMiles");
+
+//		m_SatFile.FocusMiles.setValue( new Double[] { 115.50453248010126/4.0, 71.7918155291268/2.0 } );
+//		m_SatFile.FocusCenter.setValue( new Double[] { -6.0, 146.0 } );
+
+//		imageService.imageTest("Test String Parameter", new AsyncCallback<String>() {
+//			public void onFailure(Throwable caught)
+//			{
+//				Trace.println("Test failed, caught: " + caught.getMessage() );
+//			}
+//
+//			public void onSuccess(String result)
+//			{
+//				Trace.println( "Test succeeded, result: " + result );
+//			}
+//		});
+		
+		if(DEBUGGING)
+			Trace.println("CaloricPath::sendRequestToServer(), completed");
+	}
+	
+	private double rowToLat(int row)
+	{
+		Double[] LTWH = m_Map.ViewArea.getValue();
+		double latPerRow = LTWH[3] / m_Map.ClientSize.getValue()[1];
+		double lat = LTWH[1] - (latPerRow * row);
+		return lat;
+	}
+		
+	private double colToLon(int col)
+	{
+		Double[] LTWH = m_Map.ViewArea.getValue();
+		double lonPerCol = LTWH[2] / m_Map.ClientSize.getValue()[0];
+		double lon = LTWH[0] + (lonPerCol * col);
+		return lon;
+	}
+	
+	private void drawExistingSegmentsAndNew(Context2d context, ArrayList<Point> list, int count, int x, int y)
+	{
+		context.setLineWidth(5);
+		context.setStrokeStyle(CssColor.make(204,255,51));
+		context.beginPath();
+		context.moveTo(list.get(0).getX(), list.get(0).getY());
+		for(int i = 1; i < count; i++)
+			context.lineTo(list.get(i).getX(), list.get(i).getY());
+		context.lineTo(x,y);
+		context.stroke();
+	}
+	
+	private void drawExistingSegments(Context2d context, ArrayList<Point> list, int count)
+	{
+		if(DEBUGGING)
+			Trace.println("drawExistingSegments count="+count);
+		context.setLineWidth(5);
+		context.setStrokeStyle(CssColor.make(204,255,51));
+		context.beginPath();
+		context.moveTo(list.get(0).getX(), list.get(0).getY());
+		for(int i = 1; i < count; i++)
+			context.lineTo(list.get(i).getX(), list.get(i).getY());
+		context.stroke();
+	}
+	
+	private void drawExistingSegmentsAndClosePoly(Context2d context, ArrayList<Point> list, int count)
+	{
+		if(DEBUGGING)
+			Trace.println("drawExistingSegmentsAndClosePoly");
+		context.setLineWidth(5);
+		context.setStrokeStyle(CssColor.make(204,255,51));
+		context.beginPath();
+		context.moveTo(list.get(0).getX(), list.get(0).getX());
+		for(int i = 1; i < count; i++)
+			context.lineTo(list.get(i).getX(), list.get(i).getY());
+		context.closePath();
+		context.stroke();
+	}
+	
+	private boolean isPointEndingLine(Context2d context, ArrayList<Point> list, int count, int x, int y)
+	{
+		if(DEBUGGING)
+			Trace.println("isPointEndingLine");
+		context.setLineWidth(5);
+		context.setStrokeStyle(CssColor.make(204,255,51));
+		context.beginPath();
+		context.moveTo(list.get(0).getX(), list.get(0).getY());
+		for(int i = 1; i < count; i++)
+			context.lineTo(list.get(i).getX(), list.get(i).getY());
+		context.stroke();
+		return context.isPointInPath(x, y);
+	}
+
+	private MouseMoveHandler InteractiveLayer_MouseMoveHandler = new MouseMoveHandler()
+	{
+		@Override
+		public void onMouseMove(MouseMoveEvent event)
+		{
+			int x = event.getX();
+			int y = event.getY();
+			int w = event.getX() - startXPos;
+			int h = event.getY() - startYPos;
+			ThePosition.setText("Columns = "+x+", Rows = "+y+"; lat="+ TheLatLonFormat.format(rowToLat(y)) + ", lon="+ TheLatLonFormat.format(colToLon(x)));
+			if(startXPos != -1 && startYPos != -1)
+			{
+				switch(m_Map.Mode.getValue())
+				{
+					case 0:
+						/* display shifted image */
+						ImageContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+						ImageContext.putImageData(MyImage,w,h);
+						m_The2DMap.shift(w,h);
+						break;
+					case 1:
+						/* display rectangle */
+						InteractiveContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+						InteractiveContext.setLineWidth(5);
+						InteractiveContext.setStrokeStyle(CssColor.make(204,255,51));
+						InteractiveContext.beginPath();
+						InteractiveContext.rect(startXPos, startYPos, w, h);
+						InteractiveContext.closePath();
+						InteractiveContext.stroke();
+						break;
+					case 2:
+						/* draw polyline */
+						if(Poly_Capture = true)
+						{
+							InteractiveContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+							drawExistingSegmentsAndNew(InteractiveContext, PolyPointsList, PolyPointsCount, event.getX(), event.getY());
+						}
+						break;
+					case 3:
+						/* draw polygon */
+						if(Poly_Capture = true)
+						{
+							InteractiveContext.clearRect(0, 0, m_Map.ClientSize.getValue()[0], m_Map.ClientSize.getValue()[1]);
+							drawExistingSegmentsAndNew(InteractiveContext, PolyPointsList, PolyPointsCount, event.getX(), event.getY());
+						}
+						break;
+					default:
+						/* do nothing lol */
+						break;
+				}
+			}
+		}
+	};
+	
+	
+}

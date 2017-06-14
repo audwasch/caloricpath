@@ -1,0 +1,126 @@
+package com.caloricpath.shared;
+
+import com.rpc.shared.Packable;
+import com.rpc.shared.SplitString;
+import com.rpc.shared.Trace;
+
+public class PathConfig
+	extends Packable
+{
+	public boolean DEBUGGING=false;
+
+	private Double[] m_start; //lat, long
+	private Double[] m_end; //lat, long
+	private String m_name="";
+	private Integer m_color;
+	private Integer m_id;
+	private Integer m_algorithm; /* 0=2D, 1=3D*, 2=Caloric/HikingScience, 3=Caloric/AdirondackMag, 4=Caloric/Historical */
+
+	public PathConfig()
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfig::PathConfig(), default constructor");
+	}
+	
+	public PathConfig(Integer id, Double[] start, Double[] end, String name, Integer color, Integer algorithm)
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfig::PathConfig(), id="+id+", name="+name);
+
+		setId(id);
+		setName(name);
+		setStart(start);
+		setEnd(end);
+		setColor(color);
+		setAlgorithm(algorithm);
+	}
+	
+
+	@Override
+	public Byte[] Pack()
+	{
+		StartPacking();
+		packInt(getId());
+		packString(getName());
+		packInt(getColor());
+		packInt(getAlgorithm());
+		packDoubleArray(getStart());
+		packDoubleArray(getEnd());
+		return DonePacking();
+	}
+
+	@Override
+	public int Unpack(Byte[] buf) throws Exception
+	{
+		StartUnpacking(buf);
+		setId( unpackInt() );
+		setName( unpackString() );
+		setColor( unpackInt() );
+		setAlgorithm( unpackInt() );
+		setStart( unpackDoubleArray() );
+		setEnd( unpackDoubleArray() );
+		return DoneUnpacking();
+	}
+	
+	public Integer getId() { return m_id; }
+	public String getName() { return m_name; }
+	public Double[] getStart() { return m_start; }
+	public Double[] getEnd() {return m_end; }
+	public Integer getColor() { return m_color; }
+	public Integer getAlgorithm() { return m_algorithm; }
+
+	public void setId(Integer newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfig::setId(), newValue="+newValue);
+
+		m_id = newValue;
+	}
+	
+	public void setName(String newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfig::setName(), newValue="+newValue);
+
+		m_name = newValue;
+	}
+	
+	public void setColor(Integer newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfig::setColor(), newValue="+newValue);
+		
+		m_color = newValue;
+	}
+	
+	public void setAlgorithm(Integer newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfig::setAlgorithm(), newValue="+newValue);
+		
+		m_algorithm = newValue;
+	}
+	
+	public void setStart(Double[] newValue) 
+	{ 
+		if(DEBUGGING)
+		{
+			String str = SplitString.formArrayValue(newValue);
+			Trace.println("PathConfig::setStart("+getName()+"), newValue="+str);
+		}
+		
+		m_start = newValue; 
+	}
+	
+	public void setEnd(Double[] newValue) 
+	{ 
+		if(DEBUGGING)
+		{
+			String str = SplitString.formArrayValue(newValue);
+			Trace.println("PathConfig::setEnd("+getName()+"), newValue="+str);
+		}
+		
+		m_end = newValue; 
+	}
+
+}

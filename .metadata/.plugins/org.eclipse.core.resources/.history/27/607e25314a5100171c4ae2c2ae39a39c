@@ -1,0 +1,75 @@
+package com.caloricpath.client;
+
+import com.google.gwt.event.dom.client.ClickEvent;
+import com.google.gwt.event.dom.client.ClickHandler;
+import com.google.gwt.user.client.ui.Button;
+import com.google.gwt.user.client.ui.HasHorizontalAlignment;
+import com.google.gwt.user.client.ui.Label;
+import com.google.gwt.user.client.ui.PopupPanel;
+import com.google.gwt.user.client.ui.TextArea;
+import com.google.gwt.user.client.ui.VerticalPanel;
+import com.rpc.shared.Trace;
+
+public class StartDialog
+{
+	private static boolean DEBUGGING = false;
+	
+	private static final String START_TEXT = "Welcome to the Caloric Path "
+		+"Tool. This app uses a large DEM (Digital Elevation Model) file and "
+		+"can take a little while to load.";
+	
+	private static PopupPanel m_PopupPanel;
+	private static Button m_OkayButton;
+	private static VerticalPanel m_Layout;
+	
+	public StartDialog()
+	{
+		if(DEBUGGING)
+			Trace.println("StartDialog::StartDialog()");
+		
+		m_PopupPanel = new PopupPanel(false);
+		m_PopupPanel.setGlassEnabled(true);
+		
+		buildMessage();
+	}
+	
+	private void buildMessage()
+	{
+		if(DEBUGGING)
+			Trace.println("StartDialog::buildMessage()");
+		
+		m_Layout = new VerticalPanel();
+		m_Layout.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_CENTER);
+		m_OkayButton = new Button("Okay");
+		m_OkayButton.addClickHandler(Okay_Click);
+		
+		TextArea text = new TextArea();
+		text.setText(START_TEXT);
+		text.setEnabled(false);
+		text.setReadOnly(true);
+		text.setWidth("300px");
+		text.setHeight("75px");
+		m_Layout.add(text);
+		
+		m_Layout.add(m_OkayButton);
+		m_PopupPanel.add(m_Layout);
+	}
+	
+	public void Open()
+	{
+		if(DEBUGGING)
+			Trace.println("StartDialog::Open()");
+		
+		m_PopupPanel.center();
+		m_PopupPanel.show();
+	}
+	
+	ClickHandler Okay_Click = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			m_PopupPanel.hide();
+		}
+	};
+}

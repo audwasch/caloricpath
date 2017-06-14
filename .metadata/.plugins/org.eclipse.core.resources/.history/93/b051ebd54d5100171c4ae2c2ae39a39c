@@ -1,0 +1,135 @@
+package com.caloricpath.shared;
+
+import com.rpc.shared.Packable;
+import com.rpc.shared.Trace;
+
+public class PathResult
+	extends Packable
+{
+	public boolean DEBUGGING=false;
+
+	private String m_name;
+	private Float[] m_data;
+	private Float[] m_adjustedData;
+	private Double m_length; //meters
+	private Double m_weight;
+	private Integer m_color;
+	private Integer m_id;
+	
+	public PathResult()
+	{
+		if(DEBUGGING)
+			Trace.println("PathResult::PathResult(), default constructor");
+	}
+	
+	public PathResult(Integer id, String name, Float[] data, Float[] adjustedData, Double length, Double weight, Integer color)
+	{
+		if(DEBUGGING)
+			Trace.println("PathResult::PathResult(), id="+id+", name="+name);
+		
+		setId(id);
+
+		setName(name);
+		setData(data);
+		setAdjustedData(adjustedData);
+		setLength(length);
+		setWeight(weight);
+		setColor(color);
+	}
+
+	@Override
+	public Byte[] Pack()
+	{
+		StartPacking();
+		packInt(getId());
+
+		packString(getName());
+		packInt(getColor());
+		packDouble(getLength());
+		packDouble(getWeight());
+		packFloatArray(getData());
+		packFloatArray(getAdjustedData());
+		return DonePacking();
+	}
+
+	@Override
+	public int Unpack(Byte[] buf) throws Exception
+	{
+		StartUnpacking(buf);
+		setId( unpackInt() );
+		setName( unpackString() );
+		setColor( unpackInt() );
+		setLength( unpackDouble() );
+		setWeight( unpackDouble() );
+		setData( unpackFloatArray() );
+		setAdjustedData( unpackFloatArray() );
+		return DoneUnpacking();
+	}
+
+	public Integer getId() { return m_id; }
+	public String getName() { return m_name; }
+	public Float[] getData() { return m_data; }
+	public Float[] getAdjustedData() { return m_adjustedData; }
+	public Double getLength() { return m_length; }
+	public Double getWeight() { return m_weight; }
+	public int getPoints() { return (getData()==null)?0:(getData().length/3); }
+	public Integer getColor() { return m_color; }
+	
+	public void setId(Integer newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathResult::setId(), newValue="+newValue);
+
+		m_id = newValue;
+	}
+	
+	public void setName(String newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathResult::setName(), newValue="+newValue);
+
+		m_name = newValue;
+	}
+	
+	
+	public void setColor(Integer newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathResult::setColor(), newValue="+newValue);
+		
+		m_color = newValue;
+	}
+	
+	public void setLength(Double newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathResult::setLength("+getName()+"), newValue="+newValue);
+		
+		m_length=newValue;
+	}
+	
+	public void setWeight(Double newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathResult::setWeight("+getName()+"), newValue="+newValue);
+		
+		m_weight = newValue;
+	}
+	
+	public void setData(Float[] newValue) 
+	{ 
+		if(DEBUGGING)
+			Trace.println("PathResult::setData("+getName()+"), n="+newValue.length);
+		
+		m_data = newValue; 
+	}
+	
+	public void setAdjustedData(Float[] newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathResult::setAdjustedData("+getName()+"), n="+newValue.length);
+		
+		m_adjustedData = newValue;
+	}
+
+}

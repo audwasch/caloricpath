@@ -1,0 +1,338 @@
+package com.caloricpath.client;
+
+import com.caloricpath.shared.Constraint;
+import com.caloricpath.shared.Constraint.ConstraintType;
+import com.caloricpath.shared.Constraint.DistributionType;
+import com.caloricpath.shared.utility.Util;
+import com.google.gwt.event.dom.client.ChangeEvent;
+import com.google.gwt.event.dom.client.ChangeHandler;
+import com.google.gwt.event.dom.client.ClickEvent;
+import com.google.gwt.event.dom.client.ClickHandler;
+import com.google.gwt.event.logical.shared.ValueChangeEvent;
+import com.google.gwt.event.logical.shared.ValueChangeHandler;
+import com.google.gwt.user.client.Window;
+import com.google.gwt.user.client.ui.Button;
+import com.google.gwt.user.client.ui.HasHorizontalAlignment;
+import com.google.gwt.user.client.ui.HorizontalPanel;
+import com.google.gwt.user.client.ui.Label;
+import com.google.gwt.user.client.ui.ListBox;
+import com.google.gwt.user.client.ui.PopupPanel;
+import com.google.gwt.user.client.ui.TextBox;
+import com.google.gwt.user.client.ui.VerticalPanel;
+import com.rpc.shared.Trace;
+
+public class ConstraintDialog
+{
+	private static boolean DEBUGGING=false;
+	
+	private PopupPanel m_PopupPanel;
+	
+	private String m_Name;
+	private int m_Id;
+	private int m_Type;
+	private int m_Distribution;
+	private double m_Distance;
+//	private double m_Cost;
+	private int m_Color;
+	
+	private Label m_Label;
+	private String m_Title;
+	private Button m_OkayButton;
+	private Button m_CancelButton;
+	private VerticalPanel m_Layout;
+	private HorizontalPanel m_ButtonsPanel;
+	
+	private HorizontalPanel m_NamePanel;
+	private TextBox m_NameLabel;
+	private TextBox m_NameEntry;
+	
+	private HorizontalPanel m_TypePanel;
+	private TextBox m_TypeLabel;
+	private TextBox m_TypeEntry;
+	
+	private HorizontalPanel m_DistributionPanel;
+	private TextBox m_DistributionLabel;
+	private ListBox m_DistributionList;
+	
+	private HorizontalPanel m_DistancePanel;
+	private TextBox m_DistanceLabel;
+	private TextBox m_DistanceEntry;
+	
+//	private HorizontalPanel m_CostPanel;
+//	private TextBox m_CostLabel;
+//	private TextBox m_CostEntry;
+	
+	private HorizontalPanel m_ColorPanel;
+	private TextBox m_ColorLabel;
+	private ListBox m_ColorList;
+	
+	public void setId( int newValue )
+	{
+		if(newValue<=0 )
+			Window.alert("Invalid id");
+		else
+			m_Id = newValue;
+	}
+	
+	public void setName( String newValue )
+	{
+		if(newValue == null || newValue.contentEquals(""))
+			Window.alert("Invalid label");
+		else
+			m_Name = newValue;
+	}
+	public String getName() { return m_Name; }
+	public int getId() { return m_Id;}
+	
+	public void setType( int newValue ) { m_Type = newValue; }
+	public int getType() { return m_Type; }
+	
+	public void setDistribution( int newValue ) { m_Distribution = newValue; }
+	public int getDistribution() { return m_Distribution; }
+	
+	public void setDistance( double newValue )
+	{
+		if(newValue<=0.0)
+			Window.alert("Invalid distance, must be larger than zero.");
+		else
+			m_Distance = newValue;
+	}
+	public double getDistance() { return m_Distance; }
+	
+//	public void setCost( double newValue )
+//	{
+//		if(newValue<=0.0)
+//			Window.alert("Invalid cost, must be larger than zero.");
+//		else
+//			m_Cost = newValue;
+//	}
+//	public double getCost() { return m_Cost; }
+	
+	public int getColor() { return m_Color; }
+	public void setColor( int newValue ) { m_Color = newValue; }
+	
+	public void setTitle( String newValue ) { m_Title = newValue; }
+	
+	public ConstraintDialog()
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintDialog::ConstraintDialog()");
+		
+		m_PopupPanel = new PopupPanel(false);
+		m_Label = new Label();
+		m_PopupPanel.setGlassEnabled(true);
+		buildLayout();
+	}
+	
+	private void buildLayout()
+	{
+		m_Layout = new VerticalPanel();
+		
+		m_ButtonsPanel = new HorizontalPanel();
+		m_OkayButton = new Button("Okay");
+		m_OkayButton.addClickHandler(Okay_Click);
+		m_CancelButton = new Button("Cancel");
+		m_CancelButton.addClickHandler(Cancel_Click);
+		m_ButtonsPanel.add(m_OkayButton);
+		m_ButtonsPanel.add(m_CancelButton);
+		
+		m_NamePanel = new HorizontalPanel();
+		m_NameLabel = new TextBox();
+		m_NameEntry = new TextBox();
+		m_NameLabel.setReadOnly(true);
+		m_NameLabel.setText("Label");
+		m_NameLabel.setWidth("100px");
+		m_NameLabel.setEnabled(false);
+		m_NameEntry.addValueChangeHandler(NameEntryChangeHandler);
+		m_NamePanel.add(m_NameLabel);
+		m_NamePanel.add(m_NameEntry);
+		
+		m_TypePanel = new HorizontalPanel();
+		m_TypeLabel = new TextBox();
+		m_TypeEntry = new TextBox();
+		m_TypeLabel.setReadOnly(true);
+		m_TypeLabel.setText("Type");
+		m_TypeLabel.setWidth("100px");
+		m_TypeLabel.setEnabled(false);
+		m_TypeEntry.setReadOnly(true);
+		m_TypeEntry.setEnabled(false);
+		m_TypePanel.add(m_TypeLabel);
+		m_TypePanel.add(m_TypeEntry);
+		
+		m_DistributionPanel = new HorizontalPanel();
+		m_DistributionLabel = new TextBox();
+		m_DistributionList = new ListBox();
+		m_DistributionLabel.setReadOnly(true);
+		m_DistributionLabel.setText("Distribution");
+		m_DistributionLabel.setWidth("100px");
+		m_DistributionLabel.setEnabled(false);
+		for(int i = 0; i < Constraint.DistributionTypeStrings.length; i++)
+			m_DistributionList.addItem(Constraint.DistributionTypeStrings[i]);
+		m_DistributionList.setVisibleItemCount(1); // make it a drop-down list
+		m_DistributionList.setWidth("186px");
+		m_DistributionList.setHeight("30px");
+		m_DistributionList.addChangeHandler(DistributionListChangeHandler);
+		m_DistributionPanel.add(m_DistributionLabel);
+		m_DistributionPanel.add(m_DistributionList);
+		
+		m_DistancePanel = new HorizontalPanel();
+		m_DistanceLabel = new TextBox();
+		m_DistanceEntry = new TextBox();
+		m_DistanceLabel.setReadOnly(true);
+		m_DistanceLabel.setText("Distance");
+		m_DistanceLabel.setWidth("100px");
+		m_DistanceLabel.setEnabled(false);
+		m_DistanceEntry.addValueChangeHandler(DistanceEntryChangeHandler);
+		m_DistancePanel.add(m_DistanceLabel);
+		m_DistancePanel.add(m_DistanceEntry);
+		
+//		m_CostPanel = new HorizontalPanel();
+//		m_CostLabel = new TextBox();
+//		m_CostEntry = new TextBox();
+//		m_CostLabel.setReadOnly(true);
+//		m_CostLabel.setText("Cost");
+//		m_CostLabel.setWidth("100px");
+//		m_CostLabel.setEnabled(false);
+//		m_CostEntry.addValueChangeHandler(CostEntryChangeHandler);
+//		m_CostPanel.add(m_CostLabel);
+//		m_CostPanel.add(m_CostEntry);
+		
+		m_ColorPanel = new HorizontalPanel();
+		m_ColorLabel = new TextBox();
+		m_ColorList = new ListBox();
+		m_ColorLabel.setReadOnly(true);
+		m_ColorLabel.setText("Color");
+		m_ColorLabel.setWidth("100px");
+		m_ColorLabel.setEnabled(false);
+		for(int i = 0; i < Util.NUM_COLORS; i++)
+			m_ColorList.addItem(Util.ColorStrings[i]);
+		m_ColorList.setVisibleItemCount(1); // make it a drop-down list
+		m_ColorList.setWidth("186px");
+		m_ColorList.setHeight("30px");
+		m_ColorList.addChangeHandler(ColorListChangeHandler);
+		m_ColorPanel.add(m_ColorLabel);
+		m_ColorPanel.add(m_ColorList);
+		
+		m_Layout.setHorizontalAlignment(HasHorizontalAlignment.ALIGN_CENTER);
+		m_Layout.add(m_Label);
+		m_Layout.add(m_NamePanel);
+		m_Layout.add(m_TypePanel);
+		m_Layout.add(m_DistributionPanel);
+		m_Layout.add(m_DistancePanel);
+//		m_Layout.add(m_CostPanel);
+		m_Layout.add(m_ColorPanel);
+		m_Layout.add(m_ButtonsPanel);
+		
+		m_PopupPanel.add(m_Layout);
+	}
+	
+	private ValueChangeHandler<String> NameEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			if(DEBUGGING)
+				Trace.println("new name:"+event.getValue());
+			setName(event.getValue());
+		}
+	};
+	
+	private ChangeHandler DistributionListChangeHandler = new ChangeHandler()
+	{
+		@Override
+		public void onChange(ChangeEvent event)
+		{
+			setDistribution(m_DistributionList.getSelectedIndex());
+		}
+	};
+	
+	private ValueChangeHandler<String> DistanceEntryChangeHandler = new ValueChangeHandler<String>()
+	{
+		@Override
+		public void onValueChange(ValueChangeEvent<String> event)
+		{
+			setDistance(Double.parseDouble(event.getValue()));
+		}
+	};
+	
+//	private ValueChangeHandler<String> CostEntryChangeHandler = new ValueChangeHandler<String>()
+//	{
+//		@Override
+//		public void onValueChange(ValueChangeEvent<String> event)
+//		{
+//			setCost(Double.parseDouble(event.getValue()));
+//		}
+//	};
+	
+	private ChangeHandler ColorListChangeHandler = new ChangeHandler()
+	{
+		@Override
+		public void onChange(ChangeEvent event)
+		{
+			setColor(m_ColorList.getSelectedIndex());
+			Trace.println("new color: "+getColor());
+		}
+	};
+	
+	public void OpenForEdit()
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintDialog::OpenForEdit()");
+		
+		m_Title = "Edit Path";
+		createPanel();
+	}
+	
+	private void createPanel()
+	{
+		if(DEBUGGING)
+			Trace.println("ConstraintDialog::createPanel()");
+		
+		m_Label.setText(m_Title);
+		m_NameEntry.setText(getName());
+		m_TypeEntry.setText(Constraint.ConstraintTypeStrings[getType()]);
+		m_DistributionList.setSelectedIndex(getDistribution());
+		m_DistanceEntry.setText(String.valueOf(getDistance()));
+//		m_CostEntry.setText(String.valueOf(getCost()));
+		m_ColorList.setSelectedIndex(getColor());
+		
+		m_PopupPanel.center();
+		m_PopupPanel.show();
+	}
+	
+	ClickHandler Okay_Click = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			m_PopupPanel.hide();
+			
+			try
+			{
+				Constraint edit = CaloricPath.getConstraintList().LookupById(getId());
+				edit.setName(getName());
+				edit.setType(getType() == 0 ? ConstraintType.LineConstraint : ConstraintType.PolygonConstraint);
+				edit.setDistribution(getDistribution() == 0 ? DistributionType.BinaryDistribution :
+					getDistribution() == 1 ? DistributionType.LinearDistribution : DistributionType.QuadraticDistribution );
+				edit.setDistance(getDistance());
+//				edit.setCost(getCost());
+				edit.setColor(getColor());
+				CaloricPath.getConstraintList().AnnounceChanges();
+			}
+			catch(Exception e)
+			{
+				Trace.println("ConstraintDialog::Okay_Click edit failed, e="+e.getMessage());
+			}
+		}
+	};
+	
+	
+	ClickHandler Cancel_Click = new ClickHandler()
+	{
+		@Override
+		public void onClick(ClickEvent event)
+		{
+			m_PopupPanel.hide();
+		}
+	};
+}

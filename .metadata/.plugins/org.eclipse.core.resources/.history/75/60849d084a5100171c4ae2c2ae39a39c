@@ -1,0 +1,28 @@
+package com.caloricpath.client;
+
+import com.caloricpath.shared.PathResult;
+import com.rpc.shared.Trace;
+
+public class PathResultClient
+	extends PathResult
+{
+	public PathResultClient()
+	{
+		if(DEBUGGING)
+			Trace.println("PathResultClient");
+	}
+	
+	public PathResultClient(Integer id, String name, Float[] data, Float[] adjustedData, Double length, Double weight, Integer color)
+	{
+		if(DEBUGGING)
+			Trace.println("PathResultClient::PathResultClient(), id="+id+", name="+name);
+		
+		super.setId(id);
+		super.setName(name);
+		super.setData(data);
+		super.setAdjustedData(adjustedData);
+		super.setLength(length);
+		super.setWeight(weight);
+		super.setColor(color);
+	}
+}

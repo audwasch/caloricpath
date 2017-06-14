@@ -1,0 +1,106 @@
+package com.caloricpath.client;
+
+import java.util.ArrayList;
+import com.caloricpath.client.PathStatusClient;
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.RpcClass;
+import com.rpc.shared.RpcPropertyArrayClass;
+import com.rpc.shared.Trace;
+
+public class PathStatusCollectionClient
+	extends RpcClass
+{
+	
+	public RpcPropertyArrayClass<PathStatusClient> List = 
+		new RpcPropertyArrayClass<PathStatusClient>("List",new PathStatusClient[0],READONLY)
+		{
+			@Override
+			public PathStatusClient[] CreateArray(int dimension) 
+			{	
+				PathStatusClient[] retn = new PathStatusClient[dimension];
+				for( int n=0; n<retn.length; n++ )
+					retn[n] = new PathStatusClient();
+				
+				return retn;
+			}
+		};
+
+	public PathStatusCollectionClient(String name)
+	{
+		super(name);
+		
+		List.ChangedEvent.add(List_Changed);
+	}
+	
+	private HandleChanged<PathStatusClient[]> List_Changed =
+			new HandleChanged<PathStatusClient[]>()
+	{
+		@Override
+		public void Changed(PathStatusClient[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("PathStatusCollectionClient::List_Changed, n="+newValue.length);
+		}
+	};
+
+	@Override
+	public void AttachMembers()
+	{
+		AttachMember( List );
+	}
+
+	@Override
+	public void DetachMembers()
+	{
+		DetachMember( List );
+	}
+	
+	public PathStatusClient LookupById(int id )
+	{
+		
+		for( int n=0; n<List.getValue().length; n++ )
+			if( List.getValue()[n].getId() == id )
+				return List.getValue()[n];
+		
+		return null;
+	}
+	
+	
+	public void RemoveById( int id ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatusCollectionClient::RemoveById(), id="+id);
+		
+		ArrayList<PathStatusClient> temp = new ArrayList<PathStatusClient>();
+		
+		for( int n=0; n<List.getValue().length; n++ )
+			if( List.getValue()[n].getId() != id )
+				temp.add( List.getValue()[n] );
+		
+		List.setValue( temp.toArray( new PathStatusClient[temp.size()]));
+	}
+	
+	public void AddSingle( PathStatusClient newValue ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatusCollectionClient::AddSingle(), id="+newValue.getId());
+		
+		if( LookupById(newValue.getId()) != null )
+			throw new Exception( "[Id_Already_Exists]");
+		
+		PathStatusClient[] temp = new PathStatusClient[ List.getValue().length + 1] ;
+		for( int n=0; n<List.getValue().length; n++ )
+			temp[n] = List.getValue()[n];
+		
+		temp[ List.getValue().length ] = newValue;
+		List.setValue( temp );
+	}
+
+	public void AnnounceChanges() 
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatusCollectionClient::AnnounceChanges()");
+		
+		List.AnnounceChanges();
+	}
+}

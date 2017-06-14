@@ -1,0 +1,27 @@
+package com.caloricpath.client;
+
+import com.caloricpath.shared.PathConfig;
+import com.rpc.shared.Trace;
+
+public class PathConfigClient
+	extends PathConfig
+{
+	public PathConfigClient()
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfigClient::PathConfigClient()");
+	}
+	
+	public PathConfigClient(Integer id, Double[] start, Double[] end, String name, Integer color, Integer algorithm)
+	{
+		if(DEBUGGING)
+			Trace.println("PathConfigClient::PathConfigClient(), id="+id+", name="+name);
+
+		super.setId(id);
+		super.setName(name);
+		super.setStart(start);
+		super.setEnd(end);
+		super.setColor(color);
+		super.setAlgorithm(algorithm);
+	}
+}

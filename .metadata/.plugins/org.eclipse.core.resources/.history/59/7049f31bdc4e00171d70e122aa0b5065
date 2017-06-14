@@ -1,0 +1,487 @@
+package com.caloricpath.server;
+
+import com.caloricpath.shared.PathResult;
+import com.rpc.shared.Trace;
+
+public class PathResultServer
+	extends PathResult
+{
+	private boolean DEBUGGING=false;
+	
+	private final static float DATA_INVALID = -32768.0f;
+	
+	public PathResultServer()
+	{
+		if(DEBUGGING)
+			Trace.println("PathResultServer()");
+	}
+	
+	public PathResultServer(Integer id,String name, Float[] data, Float[] adjustedData, Double length, Double weight, Integer color)
+	{
+		if(DEBUGGING)
+			Trace.println("PathResultServer::PathResultServer(), id="+id+", name="+name);
+		
+		super.setId(id);
+		super.setName(name);
+		super.setData(data);
+		super.setAdjustedData(adjustedData);
+		super.setLength(length);
+		super.setWeight(weight);
+		super.setColor(color);
+	}
+	
+	public void CalculateAndPostNewAdjustedData()
+	{
+		if(DEBUGGING)
+			Trace.println("PathResultServer::CalculateAndPostNewAdjustedData()");
+		
+		if(getData() != null && getData().length > 0)
+		{
+			Float[] retn = new Float[getData().length];
+			for(int i = 0; i < getData().length; i++)
+				retn[i] = getData()[i];
+//			
+//			int leftColumn = ImageServiceImpl.getSat().TheFile.getFocusTopLeftColRow()[0];
+//			int topRow = ImageServiceImpl.getSat().TheFile.getFocusTopLeftColRow()[1];
+//			int dimensionsColumns = ImageServiceImpl.getSat().DataDimensions.getValue()[0];
+//			int dimensionsRows = ImageServiceImpl.getSat().DataDimensions.getValue()[1];
+//			int widthColumns = ImageServiceImpl.getSat().TheFile.getFocusWidthHeightColRow()[0];
+//			int heightRows = ImageServiceImpl.getSat().TheFile.getFocusWidthHeightColRow()[1];
+//			
+//			int sampledColumn = (int)Math.floor(widthColumns / (double)dimensionsColumns);
+//			int sampledRow = (int)Math.floor(heightRows / (double)dimensionsRows);
+//			
+////			Trace.println("|leftColumn="+leftColumn+", topRow="+topRow+", dimensionsColumns="+dimensionsColumns+", dimensionsRows="+dimensionsRows
+////				+"\n|widthColumns="+widthColumns+", heightRows="+heightRows+", sampledColumn="+sampledColumn+", sampledRow="+sampledRow);
+//			
+//			for(int node = 0; node < getData().length; node+=3)
+//			{
+//				double lat = getData()[node];
+//				double lon = getData()[node + 1];
+//				double ele = getData()[node + 2];
+//				
+//				int fileColumn = ImageServiceImpl.getSat().File_LonToCol(lon);
+//				int fileRow = ImageServiceImpl.getSat().File_LatToRow(lat);
+//				
+//				if(fileColumn >= leftColumn && fileRow >= topRow)
+//				{
+//					int col = (int)Math.ceil(((fileColumn - leftColumn) * dimensionsColumns)/((double)widthColumns)); /* in full res file */
+//					int row = (int)Math.ceil(((fileRow - topRow) * dimensionsRows)/((double)heightRows)); /* in full res file */
+//					
+//					int right = leftColumn + (int)Math.floor((double)widthColumns*(double)col/(double)dimensionsColumns);
+//					int left = leftColumn + (int)Math.floor((double)widthColumns*(double)(col-1)/(double)dimensionsColumns);
+//					
+//					if(left < leftColumn)
+//					{
+//						left = leftColumn;
+//						right = left + sampledColumn;
+//					}
+//					
+//					int bottom = topRow + (int)Math.floor((double)heightRows*(double)row/(double)dimensionsRows);
+//					int top = topRow + (int)Math.floor((double)heightRows*(double)(row-1)/(double)dimensionsRows);
+//					
+//					if(top < topRow)
+//					{
+//						top = topRow;
+//						bottom = top + sampledRow;
+//					}
+//					
+//					double leftLon = ImageServiceImpl.getSat().File_ColToLon(left); /* longitude of the column in the full sized file which corresponds to the sat file data column */
+//					double rightLon = ImageServiceImpl.getSat().File_ColToLon(right); /* longitude of the column in the full sized file which corresponds to the sat file data column */
+//					double topLat = ImageServiceImpl.getSat().File_RowToLat(top); /* latitude of the row in the full sized file which corresponds to the sat file data row */
+//					double bottomLat = ImageServiceImpl.getSat().File_RowToLat(bottom); /* latitude of the row in the full sized file which corresponds to the sat file data row */
+//					
+//	//				double distToTL=Math.sqrt(Math.pow(lon-leftLon, 2)+Math.pow(lat-topLat, 2));
+//	//				double distToTR=Math.sqrt(Math.pow(lon-rightLon, 2)+Math.pow(lat-topLat, 2));
+//	//				double distToBL=Math.sqrt(Math.pow(lon-leftLon, 2)+Math.pow(lat-bottomLat, 2));
+//	//				double distToBR=Math.sqrt(Math.pow(lon-rightLon, 2)+Math.pow(lat-bottomLat, 2));
+//	//				double distTLtoBR=Math.sqrt(Math.pow(leftLon-rightLon, 2) + Math.pow(topLat - bottomLat, 2));
+//					
+//					/* calculate sign of cross product of bottom left to top right diagonal with the bottom left to path node point */
+//					double triangleSide = ((lon - leftLon) * (topLat - bottomLat)) - ((lat - bottomLat) * (rightLon - leftLon));
+//					
+//					int satFileDataLeft = col-1;
+//					int satFileDataRight = col;
+//					int satFileDataTop = row-1;
+//					int satFileDataBottom = row;
+//					
+//					int satFileDataTopLeftIndex = dimensionsColumns * satFileDataTop + satFileDataLeft;
+//					int satFileDataTopRightIndex = dimensionsColumns * satFileDataTop + satFileDataRight;
+//					int satFileDataBottomLeftIndex = dimensionsColumns * satFileDataBottom + satFileDataLeft;
+//					int satFileDataBottomRightIndex = dimensionsColumns * satFileDataBottom + satFileDataRight;
+//					
+//	//				Trace.println("\n|node="+node+", lat="+lat+", lon="+lon+", ele="+ele
+//	//					+"\n|fileColumn="+fileColumn+", fileRow="+fileRow+", col="+col+", row="+row
+//	//					+"\n|left="+left+"("+leftLon+"), right="+right+"("+rightLon+"), top="+top+"("+topLat+"), bottom="+bottom+"("+bottomLat+")"
+//	//					+"\n|fileDataLeft="+satFileDataLeft+", fileDataRight="+satFileDataRight+", fileDataTop="+satFileDataTop+", fileDataBottom="+satFileDataBottom
+//	//					+"\n|topLeftIndex="+satFileDataTopLeftIndex+", topRightIndex="+satFileDataTopRightIndex+", botLeftIndex="+satFileDataBottomLeftIndex+", botRightIndex="+satFileDataBottomRightIndex
+//	//					+"\n|triangleSide="+triangleSide);
+//					
+//	//				if(triangleSide <= 0.0)
+//					if(triangleSide <= 0.0)
+//					{
+//						
+//						/* upper triangle */
+//						//x1 is upper left corner
+//						double x1 = leftLon;
+//						double y1 = topLat;
+//						double z1 = 0.0;
+//						if(satFileDataTopLeftIndex >= 0 && satFileDataTopLeftIndex < ImageServiceImpl.getSat().FileStatus.getValue().getPoints())
+//							z1 = ImageServiceImpl.getSat().Data.getValue()[satFileDataTopLeftIndex];
+//						if(z1 == DATA_INVALID)
+//							z1 = 0.0;
+//						//x2 is upper right corner
+//						double x2 = rightLon;
+//						double y2 = topLat;
+//						double z2 = 0.0;
+//						if(satFileDataTopRightIndex >= 0 && satFileDataTopRightIndex < ImageServiceImpl.getSat().FileStatus.getValue().getPoints())
+//							z2 = ImageServiceImpl.getSat().Data.getValue()[satFileDataTopRightIndex];
+//						if(z2 == DATA_INVALID)
+//							z2 = 0.0;
+//						//x3 is bottom left corner
+//						double x3 = leftLon;
+//						double y3 = bottomLat;
+//						double z3 = 0.0;
+//						if(satFileDataBottomLeftIndex >= 0 && satFileDataBottomLeftIndex < ImageServiceImpl.getSat().FileStatus.getValue().getPoints())
+//							z3 = ImageServiceImpl.getSat().Data.getValue()[satFileDataBottomLeftIndex];
+//						if(z3 == DATA_INVALID)
+//							z3 = 0.0;
+//						
+//						//x4 is path node point
+//						double x4 = lon;
+//						double y4 = lat;
+//						double z4 = ele;
+//						//x5 is path node projected onto flat x-z plane
+//						double x5 = lon;
+//						double y5 = lat;
+//						double z5 = 0.0;
+//						
+//						double t = -(
+//							det3(x2, x3, x4,
+//								y2, y3, y4,
+//								z2, z3, z4)
+//							- det3(x1, x3, x4,
+//								y1, y3, y4,
+//								z1, z3, z4)
+//							+ det3(x1, x2, x4,
+//								y1, y2, y4,
+//								z1, z2, z4)
+//							- det3(x1, x2, x3,
+//								y1, y2, y3,
+//								z1, z2, z3))
+//							/
+//							(det3(x2, x3, x5-x4,
+//								y2, y3, y5-y4,
+//								z2, z3, z5-z4)
+//							- det3(x1, x3, x5-x4,
+//								y1, y3, y5-y4,
+//								z1, z3, z5-z4)
+//							+ det3(x1, x2, x5-x4,
+//								y1, y2, y5-y4,
+//								z1, z2, z5-z4));
+//						double x = x4 + (x5-x4)*t;
+//						double y = y4 + (y5-y4)*t;
+//						double z = z4 + (z5-z4)*t;
+//						
+//						retn[node] = (float) lat;
+//						retn[node + 1] = (float) lon;
+//						retn[node + 2] = (float) z;
+//						
+//	//					Trace.println("|UPPER TRIANGLE:"
+//	//						+"\n|upperLeft:("+x1+", "+y1+", "+z1+")"
+//	//						+"\n|upperRight:("+x2+", "+y2+", "+z2+")"
+//	//						+"\n|bottomLeft:("+x3+", "+y3+", "+z3+")"
+//	//						+"\n|p:("+x4+", "+y4+", "+z4+")"
+//	//						+"\n|projectedP:("+x5+", "+y5+", "+z5+")"
+//	//						+"\n|t="+t+", x="+x+", y="+y+", z="+z);
+//						
+//	//					if(node==0 || node == 69 || node==300)
+//	//						Trace.println("node="+node+", maxD="+distTLtoBR+", upper"
+//	//							+"\n|TL:"+distToTL+", TR:"+distToTR+", BL:"+distToBL+", BR:"+distToBR);
+//					}
+//					else
+//					{
+//						/* lower triangle */
+//						//x1 is bottom left corner
+//						double x1 = leftLon;
+//						double y1 = bottomLat;
+//						double z1 = 0.0;
+//						if(satFileDataBottomLeftIndex >= 0 && satFileDataBottomLeftIndex < ImageServiceImpl.getSat().FileStatus.getValue().getPoints())
+//							z1 = ImageServiceImpl.getSat().Data.getValue()[satFileDataBottomLeftIndex];
+//						if(z1 == DATA_INVALID)
+//							z1 = 0.0;
+//						//x2 is upper right corner
+//						double x2 = rightLon;
+//						double y2 = topLat;
+//						double z2 = 0.0;
+//						if(satFileDataTopRightIndex >= 0 && satFileDataTopRightIndex < ImageServiceImpl.getSat().FileStatus.getValue().getPoints())
+//							z2 = ImageServiceImpl.getSat().Data.getValue()[satFileDataTopRightIndex];
+//						if(z2 == DATA_INVALID)
+//							z2 = 0.0;
+//						//x3 is bottom right corner
+//						double x3 = rightLon;
+//						double y3 = bottomLat;
+//						double z3 = 0.0;
+//						if(satFileDataBottomRightIndex >= 0 && satFileDataBottomRightIndex < ImageServiceImpl.getSat().FileStatus.getValue().getPoints())
+//							z3 = ImageServiceImpl.getSat().Data.getValue()[satFileDataBottomRightIndex];
+//						if(z3 == DATA_INVALID)
+//							z3 = 0.0;
+//						
+//						//x4 is path node point
+//						double x4 = lon;
+//						double y4 = lat;
+//						double z4 = ele;
+//						//x5 is path node projected onto flat x-z plane
+//						double x5 = lon;
+//						double y5 = lat;
+//						double z5 = 0.0;
+//						
+//						double t = -(
+//							det3(x2, x3, x4,
+//								y2, y3, y4,
+//								z2, z3, z4)
+//							- det3(x1, x3, x4,
+//								y1, y3, y4,
+//								z1, z3, z4)
+//							+ det3(x1, x2, x4,
+//								y1, y2, y4,
+//								z1, z2, z4)
+//							- det3(x1, x2, x3,
+//								y1, y2, y3,
+//								z1, z2, z3))
+//							/
+//							(det3(x2, x3, x5-x4,
+//								y2, y3, y5-y4,
+//								z2, z3, z5-z4)
+//							- det3(x1, x3, x5-x4,
+//								y1, y3, y5-y4,
+//								z1, z3, z5-z4)
+//							+ det3(x1, x2, x5-x4,
+//								y1, y2, y5-y4,
+//								z1, z2, z5-z4));
+//						double x = x4 + (x5-x4)*t;
+//						double y = y4 + (y5-y4)*t;
+//						double z = z4 + (z5-z4)*t;
+//						
+//						retn[node] = (float) lat;
+//						retn[node + 1] = (float) lon;
+//						retn[node + 2] = (float) z;
+//						
+//	//					Trace.println("|LOWER TRIANGLE:"
+//	//						+"\n|bottomLeft:("+x1+", "+y1+", "+z1+")"
+//	//						+"\n|upperRight:("+x2+", "+y2+", "+z2+")"
+//	//						+"\n|bottomRight:("+x3+", "+y3+", "+z3+")"
+//	//						+"\n|p:("+x4+", "+y4+", "+z4+")"
+//	//						+"\n|projectedP:("+x5+", "+y5+", "+z5+")"
+//	//						+"\n|t="+t+", x="+x+", y="+y+", z="+z);
+//						
+//	//					if(node==0 || node == 69 || node==300)
+//	//						Trace.println("node="+node+", upper"
+//	//								+"\n|TL:"+distToTL+", TR:"+distToTR+", BL:"+distToBL+", BR:"+distToBR);
+//					}
+//				}
+//				else
+//				{
+//					retn[node] = (float) lat;
+//					retn[node + 1] = (float) lon;
+//					retn[node + 2] = (float) ele;
+//				}
+//			}
+			
+			setAdjustedData(retn);
+		}
+	}
+	
+	private double det3(double a, double b, double c, double d, double e, double f, double g, double h, double i)
+	{
+		return (a * (e*i - h*f)) - (b * (d*i - g*f)) + (c * (d*h - g*e));
+	}
+	
+//	public void CalculateAndPostNewAdjustedData()
+//	{
+//		if(DEBUGGING)
+//			Trace.println("PathResultServer::CalculateAndPostNewAdjustedData()");
+//		
+//		if(getData() != null && getData().length > 0)
+//		{
+//			Float[] retn = new Float[getData().length];
+//			
+//			int leftColumn = ImageServiceImpl.getSat().TheFile.getFocusTopLeftColRow()[0];
+//			int topRow = ImageServiceImpl.getSat().TheFile.getFocusTopLeftColRow()[1];
+//			int dimensionsColumns = ImageServiceImpl.getSat().DataDimensions.getValue()[0];
+//			int dimensionsRows = ImageServiceImpl.getSat().DataDimensions.getValue()[1];
+//			int widthColumns = ImageServiceImpl.getSat().TheFile.getFocusWidthHeightColRow()[0];
+//			int heightRows = ImageServiceImpl.getSat().TheFile.getFocusWidthHeightColRow()[1];
+//			
+//			int sampledColumn = leftColumn + (int)Math.floor(widthColumns / (double)dimensionsColumns);
+//			int sampledRow = topRow + (int)Math.floor(heightRows / (double)dimensionsRows);
+//			
+//			for(int node = 0; node < getData().length; node+=3)
+//			{
+//				double lat = getData()[node];
+//				double lon = getData()[node + 1];
+//				double ele = getData()[node + 2];
+//				
+//				int fileColumn = PathComputation.lonToCol(lon);
+//				int fileRow = PathComputation.latToRow(lat);
+//				
+//				int col = (int)Math.ceil(((fileColumn - leftColumn) * dimensionsColumns)/((double)widthColumns)); /* in full res file */
+//				int row = (int)Math.ceil(((fileRow - topRow) * dimensionsRows)/((double)heightRows)); /* in full res file */
+//				
+//				int right = col * sampledColumn; /* column of full size file which corresponds to a column in the sat file data */
+//				int left = right - sampledColumn; /* column of full size file which corresponds to a column in the sat file data */
+//				if(left < 0)
+//				{
+//					left = 0;
+//					right = sampledColumn;
+//				}
+//				
+//				int bottom = row * sampledRow; /* row of full size file which corresponds to a row in the sat file data */
+//				int top = bottom - sampledRow; /* row of full size file which corresponds to a row in the sat file data */
+//				if(top < 0)
+//				{
+//					top = 0;
+//					bottom = sampledRow;
+//				}
+//				
+//				double leftLon = PathComputation.colToLon(left); /* longitude of the column in the full sized file which corresponds to the sat file data column */
+//				double rightLon = PathComputation.colToLon(right); /* longitude of the column in the full sized file which corresponds to the sat file data column */
+//				double topLat = PathComputation.rowToLat(top); /* latitude of the row in the full sized file which corresponds to the sat file data row */
+//				double bottomLat = PathComputation.rowToLat(bottom); /* latitude of the row in the full sized file which corresponds to the sat file data row */
+//				
+//				/* calculate sign of cross product of bottom left to top right diagonal with the bottom left to path node point */
+//				double triangleSide = ((lon - leftLon) * (topLat - bottomLat)) - ((lat - bottomLat) * (rightLon - leftLon));
+//				
+//				int satFileDataLeft = left / sampledColumn;
+//				int satFileDataRight = right / sampledColumn;
+//				int satFileDataTop = top / sampledRow;
+//				int satFileDataBottom = bottom / sampledRow;
+//				
+//				int satFileDataTopLeftIndex = dimensionsColumns * satFileDataTop + satFileDataLeft;
+//				int satFileDataTopRightIndex = dimensionsColumns * satFileDataTop + satFileDataRight;
+//				int satFileDataBottomLeftIndex = dimensionsColumns * satFileDataBottom + satFileDataLeft;
+//				int satFileDataBottomRightIndex = dimensionsColumns * satFileDataBottom + satFileDataRight;
+//				
+//				if(triangleSide <= 0.0)
+//				{
+//					/* upper triangle */
+//					//x1 is upper left corner
+//					double x1 = leftLon;
+//					double y1 = topLat;
+//					double z1 = ImageServiceImpl.getSat().Data.getValue()[satFileDataTopLeftIndex];
+//					//x2 is upper right corner
+//					double x2 = rightLon;
+//					double y2 = topLat;
+//					double z2 = ImageServiceImpl.getSat().Data.getValue()[satFileDataTopRightIndex];
+//					//x3 is bottom left corner
+//					double x3 = leftLon;
+//					double y3 = bottomLat;
+//					double z3 = ImageServiceImpl.getSat().Data.getValue()[satFileDataBottomLeftIndex];
+//					
+//					//x4 is path node point
+//					double x4 = lon;
+//					double y4 = lat;
+//					double z4 = ele;
+//					//x5 is path node projected onto flat x-z plane
+//					double x5 = lon;
+//					double y5 = lat;
+//					double z5 = 0.0;
+//					
+//					double t = -(
+//						det3(x2, x3, x4,
+//							y2, y3, y4,
+//							z2, z3, z4)
+//						- det3(x1, x3, x4,
+//							y1, y3, y4,
+//							z1, z3, z4)
+//						+ det3(x1, x2, x4,
+//							y1, y2, y4,
+//							z1, z2, z4)
+//						- det3(x1, x2, x3,
+//							y1, y2, y3,
+//							z1, z2, z3))
+//						/
+//						(det3(x2, x3, x5-x4,
+//							y2, y3, y5-y4,
+//							z2, z3, z5-z4)
+//						- det3(x1, x3, x5-x4,
+//							y1, y3, y5-y4,
+//							z1, z3, z5-z4)
+//						+ det3(x1, x2, x5-x4,
+//							y1, y2, y5-y4,
+//							z1, z2, z5-z4));
+////					double x = x4 + (x5-x4)*t;
+////					double y = y4 + (y5-y4)*t;
+//					double z = z4 + (z5-z4)*t;
+//					
+//					retn[node] = (float) lat;
+//					retn[node + 1] = (float) lon;
+//					retn[node + 2] = (float) z;
+//				}
+//				else
+//				{
+//					/* lower triangle */
+//					//x1 is bottom left corner
+//					double x1 = leftLon;
+//					double y1 = bottomLat;
+//					double z1 = ImageServiceImpl.getSat().Data.getValue()[satFileDataBottomLeftIndex];
+//					//x2 is upper right corner
+//					double x2 = rightLon;
+//					double y2 = topLat;
+//					double z2 = ImageServiceImpl.getSat().Data.getValue()[satFileDataTopRightIndex];
+//					//x3 is bottom right corner
+//					double x3 = rightLon;
+//					double y3 = bottomLat;
+//					double z3 = ImageServiceImpl.getSat().Data.getValue()[satFileDataBottomRightIndex];
+//					
+//					//x4 is path node point
+//					double x4 = lon;
+//					double y4 = lat;
+//					double z4 = ele;
+//					//x5 is path node projected onto flat x-z plane
+//					double x5 = lon;
+//					double y5 = lat;
+//					double z5 = 0.0;
+//					
+//					double t = -(
+//						det3(x2, x3, x4,
+//							y2, y3, y4,
+//							z2, z3, z4)
+//						- det3(x1, x3, x4,
+//							y1, y3, y4,
+//							z1, z3, z4)
+//						+ det3(x1, x2, x4,
+//							y1, y2, y4,
+//							z1, z2, z4)
+//						- det3(x1, x2, x3,
+//							y1, y2, y3,
+//							z1, z2, z3))
+//						/
+//						(det3(x2, x3, x5-x4,
+//							y2, y3, y5-y4,
+//							z2, z3, z5-z4)
+//						- det3(x1, x3, x5-x4,
+//							y1, y3, y5-y4,
+//							z1, z3, z5-z4)
+//						+ det3(x1, x2, x5-x4,
+//							y1, y2, y5-y4,
+//							z1, z2, z5-z4));
+////					double x = x4 + (x5-x4)*t;
+////					double y = y4 + (y5-y4)*t;
+//					double z = z4 + (z5-z4)*t;
+//					
+//					retn[node] = (float) lat;
+//					retn[node + 1] = (float) lon;
+//					retn[node + 2] = (float) z;
+//				}
+//			}
+//			
+//			setAdjustedData(retn);
+//		}
+//	}
+//	
+//	private double det3(double a, double b, double c, double d, double e, double f, double g, double h, double i)
+//	{
+//		return (a * (e*i - h*f)) - (b * (d*i - g*f)) + (c * (d*h - g*e));
+//	}
+}

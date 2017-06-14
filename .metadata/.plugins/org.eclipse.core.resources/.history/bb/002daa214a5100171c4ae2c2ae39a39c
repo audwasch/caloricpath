@@ -1,0 +1,41 @@
+package com.caloricpath.client;
+
+import com.caloricpath.shared.RenderView;
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.RpcClass;
+import com.rpc.shared.RpcPropertyClass;
+import com.rpc.shared.Trace;
+
+public class RenderViewClient
+	extends RpcClass
+{
+	public RpcPropertyClass<RenderView> View = new RpcPropertyClass<RenderView>("View", new RenderView(), READWRITE+SAVERESTORE);
+
+	public RenderViewClient(String name)
+	{
+		super(name);
+		View.ChangedEvent.add(View_Changed);
+	}
+
+	@Override
+	public void AttachMembers()
+	{
+		AttachMember( View );
+	}
+
+	@Override
+	public void DetachMembers()
+	{
+		DetachMember( View );
+	}
+
+	private HandleChanged<RenderView> View_Changed = new HandleChanged<RenderView>()
+	{
+		@Override
+		public void Changed(RenderView newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("RenderViewClient::View_Changed()");
+		}
+	};
+}

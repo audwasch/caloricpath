@@ -1,0 +1,66 @@
+package com.caloricpath.shared;
+
+import com.rpc.shared.Packable;
+import com.rpc.shared.Trace;
+
+public class PathStatus
+	extends Packable
+{
+	public boolean DEBUGGING=false;
+
+	private String m_status="";
+	private Integer m_id;
+	
+	public PathStatus()
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatus::PathStatus(), default constructor");
+	}
+	
+	public PathStatus(Integer id, String status)
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatus::PathStatus(), id="+id);
+		
+		setId(id);
+		setStatus(status);
+	}
+
+	@Override
+	public Byte[] Pack()
+	{
+		StartPacking();
+		packInt(getId());
+		packString(getStatus());
+		return DonePacking();
+	}
+
+	@Override
+	public int Unpack(Byte[] buf) throws Exception
+	{
+		StartUnpacking(buf);
+		setId( unpackInt() );
+		setStatus( unpackString() );
+		return DoneUnpacking();
+	}
+
+	public Integer getId() { return m_id; }
+	public String getStatus() { return m_status; }
+	
+	public void setId(Integer newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatus::setId(), newValue="+newValue);
+
+		m_id = newValue;
+	}
+	
+	public void setStatus(String newValue)
+	{
+		if(DEBUGGING)
+			Trace.println("PathStatus::setStatus("+getId()+"), newValue="+newValue);
+		
+		m_status=newValue;
+	}
+
+}

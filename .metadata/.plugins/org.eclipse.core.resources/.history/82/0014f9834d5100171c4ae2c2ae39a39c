@@ -1,0 +1,163 @@
+package com.caloricpath.server;
+
+import java.util.ArrayList;
+
+import com.caloricpath.shared.AppGlobal;
+import com.rpc.shared.HandleChanged;
+import com.rpc.shared.HandleExecute;
+import com.rpc.shared.RpcClass;
+import com.rpc.shared.RpcMethod;
+import com.rpc.shared.RpcPropertyArrayClass;
+import com.rpc.shared.Trace;
+
+public class PathResultCollectionServer
+	extends RpcClass
+{
+	
+	public RpcPropertyArrayClass<PathResultServer> List = 
+		new RpcPropertyArrayClass<PathResultServer>("List",new PathResultServer[0],READWRITE+SAVERESTORE)
+		{
+			@Override
+			public PathResultServer[] CreateArray(int dimension) 
+			{	
+				PathResultServer[] retn = new PathResultServer[dimension];
+				for( int n=0; n<retn.length; n++ )
+					retn[n] = new PathResultServer();
+				
+				return retn;
+			}
+		};
+		
+	public RpcMethod SaveAsGPX = new RpcMethod("SaveAsGPX" );
+
+	public PathResultCollectionServer(String name)
+	{
+		super(name);
+		List.ChangedEvent.add(List_Changed);
+		SaveAsGPX.setExecuteMethod( SaveAsGPX_Execute);
+		
+		ImageServiceImpl.getSat().Data.ChangedEvent.add(SatFileServer_Data_Changed);
+		
+		//DEBUGGING=true;
+		//List.DEBUGGING=true;
+	}
+	
+	private HandleChanged<Float[]> SatFileServer_Data_Changed =
+			new HandleChanged<Float[]>()
+	{
+		@Override
+		public void Changed(Float[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("PathResultCollectionServer::SatFileServer_Data_Changed()");
+			
+			if(newValue!=null)
+			{	
+				if(DEBUGGING)
+					Trace.println("|n="+newValue.length);
+				
+				if(List.getValue() != null && List.getValue().length > 0)
+					for(int i = 0; i < List.getValue().length; i++)
+						List.getValue()[i].CalculateAndPostNewAdjustedData();
+				
+				AnnounceChanges();
+			}
+		}
+	};
+	
+	private HandleChanged<PathResultServer[]> List_Changed =
+			new HandleChanged<PathResultServer[]>()
+	{
+		@Override
+		public void Changed(PathResultServer[] newValue) throws Exception
+		{
+			if(DEBUGGING)
+				Trace.println("PathResultCollectionServer::List_Changed, n="+newValue.length);
+		}
+	};
+
+	@Override
+	public void AttachMembers()
+	{
+		AttachMember( List );
+		AttachMember( SaveAsGPX );
+	}
+
+	@Override
+	public void DetachMembers()
+	{
+		DetachMember( List );
+		DetachMember( SaveAsGPX );
+	}
+	
+	private HandleExecute<String[]> SaveAsGPX_Execute =
+			new HandleExecute<String[]>()
+	{
+		@Override
+		public void Execute(String[] parameter) throws Exception
+		{
+			if( parameter==null || parameter.length<=0 )
+				throw new Exception("SaveAsGPX invalid ID");
+			
+			int theId = Integer.valueOf(parameter[0]);
+			
+			ImageServiceImpl.getPathProcessor().SaveAsGPX(
+				theId,
+				AppGlobal.SERVER_DOWNLOAD_FILE 
+				);
+		}
+	};
+		
+	
+	public PathResultServer LookupById(int id )
+	{
+		for( int n=0; n<List.getValue().length; n++ )
+			if( List.getValue()[n].getId() == id )
+				return List.getValue()[n];
+		
+		return null;
+	}
+	
+	public void RemoveById( int id ) throws Exception
+	{
+		if(DEBUGGING)
+			Trace.println("PathResultCollectionServer::RemoveById(), id="+id);
+		
+		ArrayList<PathResultServer> temp = new ArrayList<PathResultServer>();
+		
+		for( int n=0; n<List.getValue().length; n++ )
+			if( List.getValue()[n].getId() != id )
+				temp.add( List.getValue()[n] );
+		
+		List.setValue( temp.toArray( new PathResultServer[temp.size()]));
+	}
+	
+	
+	
+	public void AddSingle( PathResultServer newValue ) throws Exception
+	{
+		if( newValue.getName()==null || newValue.getName().length()==0 )
+			throw new Exception("[Must_Have_Name]");
+		
+		if(DEBUGGING)
+			Trace.println("PathResultCollectionServer::AddSingle(), name="+newValue.getName());
+		
+		if( LookupById(newValue.getId()) != null )
+			throw new Exception( "[Id_Already_Exists]");
+		
+		PathResultServer[] temp = new PathResultServer[ List.getValue().length + 1] ;
+		for( int n=0; n<List.getValue().length; n++ )
+			temp[n] = List.getValue()[n];
+		
+		temp[ List.getValue().length ] = newValue;
+		List.setValue( temp );
+	}
+
+	public void AnnounceChanges()
+	{
+		if(DEBUGGING)
+			Trace.println("PathResultCollectionServer::AnnounceChanges()");
+		
+		List.AnnounceChanges();
+	}
+}
